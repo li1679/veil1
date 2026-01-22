@@ -315,21 +315,7 @@ export function createRouter() {
 
       // 1) 管理员：用户名匹配 ADMIN_NAME + 密码匹配 ADMIN_PASSWORD
       if (name === ADMIN_NAME && ADMIN_PASSWORD && password === ADMIN_PASSWORD) {
-        let adminUserId = 0;
-        try {
-          const u = await DB.prepare('SELECT id FROM users WHERE username = ?').bind(ADMIN_NAME).all();
-          if (u?.results?.length) {
-            adminUserId = Number(u.results[0].id);
-          } else {
-            await DB.prepare("INSERT INTO users (username, role, can_send, mailbox_limit) VALUES (?, 'admin', 1, 9999)").bind(ADMIN_NAME).run();
-            const again = await DB.prepare('SELECT id FROM users WHERE username = ?').bind(ADMIN_NAME).all();
-            adminUserId = Number(again?.results?.[0]?.id || 0);
-          }
-        } catch (_) {
-          adminUserId = 0;
-        }
-
-        const token = await createJwt(JWT_TOKEN, { role: 'admin', username: ADMIN_NAME, userId: adminUserId });
+        const token = await createJwt(JWT_TOKEN, { role: 'admin', username: ADMIN_NAME, userId: 0 });
         const headers = new Headers({ 'Content-Type': 'application/json' });
         headers.set('Set-Cookie', buildSessionCookie(token, request.url));
         return new Response(JSON.stringify({ success: true, role: 'admin', can_send: 1, mailbox_limit: 9999 }), { headers });

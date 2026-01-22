@@ -96,22 +96,7 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
     let uid = Number(payload?.userId || 0);
     if (uid) return uid;
     if (!isStrictAdmin()) return 0;
-    const adminName = String(options?.adminName || payload?.username || '').trim().toLowerCase();
-    if (!adminName) return 0;
-    try{
-      const { results } = await db.prepare('SELECT id FROM users WHERE username = ? LIMIT 1')
-        .bind(adminName).all();
-      if (results && results.length) {
-        return Number(results[0].id);
-      }
-      await db.prepare("INSERT INTO users (username, role, can_send, mailbox_limit) VALUES (?, 'admin', 1, 9999)")
-        .bind(adminName).run();
-      const again = await db.prepare('SELECT id FROM users WHERE username = ? LIMIT 1')
-        .bind(adminName).all();
-      return Number(again?.results?.[0]?.id || 0);
-    }catch(_){
-      return 0;
-    }
+    return 0;
   }
   
   async function sha256Hex(text){
@@ -1017,21 +1002,6 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
     if (!address) return new Response('缺少 address 参数', { status: 400 });
     const payload = getJwtPayload();
     let uid = Number(payload?.userId || 0);
-    // 兼容旧会话：严格管理员旧 Token 可能没有 userId，这里兜底保障可置顶
-    if (!uid && isStrictAdmin()){
-      try{
-        const { results } = await db.prepare('SELECT id FROM users WHERE username = ?')
-          .bind(String(options?.adminName || 'admin').toLowerCase()).all();
-        if (results && results.length){
-          uid = Number(results[0].id);
-        } else {
-          const uname = String(options?.adminName || 'admin').toLowerCase();
-          await db.prepare("INSERT INTO users (username, role, can_send, mailbox_limit) VALUES (?, 'admin', 1, 9999)").bind(uname).run();
-          const again = await db.prepare('SELECT id FROM users WHERE username = ?').bind(uname).all();
-          uid = Number(again?.results?.[0]?.id || 0);
-        }
-      }catch(_){ uid = 0; }
-    }
     if (!uid) return new Response('未登录', { status: 401 });
     try {
       const result = await toggleMailboxPin(db, address, uid);
