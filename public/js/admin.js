@@ -450,15 +450,16 @@ function renderInbox(emails) {
     currentInboxEmails = Array.isArray(emails) ? emails : [];
 
     if (currentInboxEmails.length === 0) {
+        container.classList.add('inbox-empty');
         container.innerHTML = `
-            <div class="inbox-empty">
-                <i class="ph ph-tray"></i>
-                <span>暂无新邮件</span>
-            </div>
+            <i class="ph ph-tray"></i>
+            <span>暂无新邮件</span>
         `;
         return;
     }
 
+    // Inbox container starts as an "empty state" flexbox in HTML; remove it when rendering list items.
+    container.classList.remove('inbox-empty');
     container.innerHTML = currentInboxEmails.map(email => {
         const fromRaw = email.from_name || email.from_address || 'U';
         const subjectRaw = email.subject || '(无主题)';
