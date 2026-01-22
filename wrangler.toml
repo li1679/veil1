@@ -1,0 +1,28 @@
+name = "veil1"
+main = "src/server.js"
+compatibility_date = "2024-01-01"
+
+# D1 database binding
+[[d1_databases]]
+binding = "TEMP_MAIL_DB"
+database_name = "veil_db" # your D1 database name
+database_id = "70b8cac1-d764-4155-99df-e0be8fe41166" # your database_id
+
+# Environment variables
+
+
+# Static assets (Workers + Assets)
+[assets]
+directory = "public"
+# Explicit binding name so env.ASSETS is available in Worker
+binding = "ASSETS"
+
+
+# R2 bucket binding (stores full EML content)
+[[r2_buckets]]
+binding = "MAIL_EML"
+bucket_name = "veil-eml"
+
+# wrangler.toml (wrangler v3.88.0^) logs
+# [observability.logs]
+# enabled = true
