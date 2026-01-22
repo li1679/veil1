@@ -1,4 +1,4 @@
-export function generateRandomId(length = 8) {
+﻿export function generateRandomId(length = 8) {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
   let result = '';
   const len = Math.max(4, Math.min(32, Number(length) || 8));

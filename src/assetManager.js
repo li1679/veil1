@@ -1,4 +1,4 @@
-import { resolveAuthPayload } from './routes.js';
+﻿import { resolveAuthPayload } from './routes.js';
 
 /**
  * 静态资源管理器

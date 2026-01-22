@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Veil - 普通用户页面逻辑
  * 只有生成邮箱功能
  */
@@ -440,20 +440,20 @@ function renderInbox(emails) {
             <div class="mail-item" onclick="openMailDetail(${email.id})">
                 <div class="mail-avatar">${escapeHtml(avatarChar || 'U')}</div>
                 <div class="mail-content">
-                    <div class="mail-header">
-                        <span class="mail-from">${escapeHtml(fromRaw)}</span>
-                        <span class="mail-time">${formatTime(email.received_at)}</span>
-                    </div>
+                    <div class="mail-from">${escapeHtml(fromRaw)}</div>
                     <div class="mail-subject">${escapeHtml(subjectRaw)}</div>
                     <div class="mail-preview">${escapeHtml(previewRaw)}</div>
                 </div>
-                <div class="mail-actions">
+                <div class="mail-meta">
+                    <div class="mail-time">${formatTime(email.received_at)}</div>
+                    <div class="mail-actions">
                     <button class="action-btn" onclick="copyEmailCode(event, ${email.id})" title="复制验证码">
                         <i class="ph-bold ph-copy"></i>
                     </button>
                     <button class="action-btn delete" onclick="deleteEmailItem(event, ${email.id})" title="删除邮件">
                         <i class="ph-bold ph-trash"></i>
                     </button>
+                </div>
                 </div>
             </div>
         `;

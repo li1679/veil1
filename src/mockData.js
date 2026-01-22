@@ -1,4 +1,4 @@
-import { generateRandomId } from './commonUtils.js';
+﻿import { generateRandomId } from './commonUtils.js';
 
 function formatTs(dateMs) {
   return new Date(dateMs).toISOString().replace('T', ' ').slice(0, 19);
@@ -41,6 +41,7 @@ export function buildMockMailboxes(limit = 10, offset = 0, mailDomains = []) {
     is_pinned: i < 2 ? 1 : 0, // 前两个邮箱设为置顶
     password_is_default: i % 3 === 0 ? 1 : 0, // 每三个邮箱有一个是默认密码
     can_login: i < 5 ? 1 : 0, // 前五个邮箱允许登录
+    email_count: (offset + i) % 5,
   }));
 }
 
@@ -55,5 +56,4 @@ export function buildMockEmailDetail(id = 10000) {
     html_content: `<p><strong>演示模式</strong>：该内容为模拟数据。</p><p>验证码：<strong>${code}</strong></p>`,
   };
 }
-
 

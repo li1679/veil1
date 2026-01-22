@@ -1,4 +1,4 @@
-import { initDatabase } from './database.js';
+﻿import { initDatabase } from './database.js';
 import { handleEmailReceive } from './apiHandlers.js';
 import { extractEmail } from './commonUtils.js';
 import { forwardByLocalPart } from './emailForwarder.js';

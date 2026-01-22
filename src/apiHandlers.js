@@ -1,4 +1,4 @@
-import { extractEmail, generateRandomId } from './commonUtils.js';
+﻿import { extractEmail, generateRandomId } from './commonUtils.js';
 import { buildMockEmails, buildMockMailboxes, buildMockEmailDetail } from './mockData.js';
 import { getOrCreateMailboxId, getMailboxIdByAddress, recordSentEmail, updateSentEmail, toggleMailboxPin, 
   listUsersWithCounts, createUser, updateUser, deleteUser, assignMailboxToUser, getUserMailboxes, unassignMailboxFromUser, 
@@ -929,7 +929,8 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
       const { results } = await db.prepare(`
         SELECT m.id, m.address, m.created_at, um.is_pinned,
                CASE WHEN (m.password_hash IS NULL OR m.password_hash = '') THEN 1 ELSE 0 END AS password_is_default,
-               COALESCE(m.can_login, 0) AS can_login
+               COALESCE(m.can_login, 0) AS can_login,
+               (SELECT COUNT(1) FROM messages WHERE mailbox_id = m.id) AS email_count
         FROM user_mailboxes um
         JOIN mailboxes m ON m.id = um.mailbox_id
         ${whereClause}

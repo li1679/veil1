@@ -1,4 +1,4 @@
--- Cloudflare D1 初始化脚本（不包含旧表迁移）
+﻿-- Cloudflare D1 初始化脚本（不包含旧表迁移）
 
 PRAGMA foreign_keys = ON;
 

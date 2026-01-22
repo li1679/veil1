@@ -1,4 +1,4 @@
-// 发送邮件服务（Resend）——基于 fetch 的 Edge 兼容实现
+﻿// 发送邮件服务（Resend）——基于 fetch 的 Edge 兼容实现
 
 /**
  * 解析 RESEND_TOKEN 配置，支持多域名API密钥映射

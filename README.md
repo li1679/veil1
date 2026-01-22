@@ -1,4 +1,4 @@
-# Veil - 临时邮箱服务
+﻿# Veil - 临时邮箱服务
 
 基于 Cloudflare Workers 和 D1 数据库的临时邮箱服务。
 

@@ -2,29 +2,27 @@ name = "veil1"
 main = "src/server.js"
 compatibility_date = "2024-01-01"
 
-# D1 数据库绑定
+# D1 database binding
 [[d1_databases]]
 binding = "TEMP_MAIL_DB"
-database_name = "veil_db" #你的d1数据库名称
-database_id = "c82663ac-62b6-4ba6-be81-cbe297f2a3dd" # 你的database_id
+database_name = "veil_db" # your D1 database name
+database_id = "c82663ac-62b6-4ba6-be81-cbe297f2a3dd" # your database_id
 
-# 环境变量
+# Environment variables
 
 
-# 静态资源目录（Workers + Assets）
+# Static assets (Workers + Assets)
 [assets]
 directory = "public"
-# 显式指定绑定名，确保在 Worker 中通过 env.ASSETS 可用
+# Explicit binding name so env.ASSETS is available in Worker
 binding = "ASSETS"
 
 
-# R2 存储桶绑定（用于保存完整 EML 内容）
+# R2 bucket binding (stores full EML content)
 [[r2_buckets]]
 binding = "MAIL_EML"
 bucket_name = "veil-eml"
 
-# wrangler.toml (wrangler v3.88.0^) 日志服务
+# wrangler.toml (wrangler v3.88.0^) logs
 # [observability.logs]
 # enabled = true
-
-

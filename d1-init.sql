@@ -1,4 +1,4 @@
--- Cloudflare D1 数据库初始化脚本
+﻿-- Cloudflare D1 数据库初始化脚本
 -- 首次部署时执行：wrangler d1 execute DB --file=./d1-init.sql
 
 -- 启用外键约束

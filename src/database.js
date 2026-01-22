@@ -1,4 +1,4 @@
-import { clearExpiredCache } from './cacheHelper.js';
+﻿import { clearExpiredCache } from './cacheHelper.js';
 
 // 初始化状态标志（全局共享，Worker 生命周期内有效）
 let _isFirstInit = true;

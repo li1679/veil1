@@ -1,4 +1,4 @@
-export const COOKIE_NAME = 'iding-session';
+﻿export const COOKIE_NAME = 'iding-session';
 
 /**
  * 创建JWT令牌

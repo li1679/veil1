@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 解析邮件正文，提取文本和HTML内容
  * @param {string} raw - 原始邮件内容
  * @returns {object} 包含text和html属性的对象
