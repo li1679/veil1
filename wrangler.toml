@@ -1,4 +1,4 @@
-name = "veil"
+name = "veil1"
 main = "src/server.js"
 compatibility_date = "2024-01-01"
 
@@ -26,6 +26,5 @@ bucket_name = "veil-eml"
 # wrangler.toml (wrangler v3.88.0^) 日志服务
 # [observability.logs]
 # enabled = true
-
 
 
