@@ -1,0 +1,46 @@
+name: Sync Upstream
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *" # every 6 hours
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync
+        env:
+          UPSTREAM_REPO: ${{ vars.UPSTREAM_REPO || 'li1679/veil' }}
+          UPSTREAM_BRANCH: ${{ vars.UPSTREAM_BRANCH || 'main' }}
+          TARGET_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euxo pipefail
+
+          if [ "${GITHUB_REPOSITORY}" = "${UPSTREAM_REPO}" ]; then
+            echo "Upstream repo equals current repo; skip."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git" || true
+          git fetch --prune upstream "${UPSTREAM_BRANCH}"
+
+          git checkout "${TARGET_BRANCH}"
+          git merge --ff-only "upstream/${UPSTREAM_BRANCH}"
+          git push origin "${TARGET_BRANCH}"
+

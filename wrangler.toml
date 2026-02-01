@@ -1,12 +1,13 @@
 name = "veil1"
 main = "src/server.js"
 compatibility_date = "2024-01-01"
+keep_vars = true
 
 # D1 database binding
 [[d1_databases]]
 binding = "TEMP_MAIL_DB"
 database_name = "veil_db" # your D1 database name
-database_id = "70b8cac1-d764-4155-99df-e0be8fe41166" # your database_id
+# TIP: omit database_id to allow Wrangler to auto-provision or to avoid hardcoding account-specific IDs.
 
 # Environment variables
 # IMPORTANT: do NOT commit real credentials here.
@@ -29,7 +30,7 @@ binding = "ASSETS"
 # R2 bucket binding (stores full EML content)
 [[r2_buckets]]
 binding = "MAIL_EML"
-bucket_name = "veil-eml"
+# TIP: omit bucket_name to allow Wrangler to auto-provision an R2 bucket for this Worker.
 
 # wrangler.toml (wrangler v3.88.0^) logs
 # [observability.logs]
