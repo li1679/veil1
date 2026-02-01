@@ -962,6 +962,8 @@ input[type=range]::-webkit-slider-thumb {
     .e-row {
         display: flex; flex-direction: column; align-items: flex-start;
         gap: 8px; padding: 16px;
+        max-height: none;
+        overflow: visible;
     }
     .e-row .col-actions { opacity: 1; transform: none; }
 
@@ -1006,6 +1008,26 @@ input[type=range]::-webkit-slider-thumb {
 }
 
 @media (hover: none), (pointer: coarse) {
+    /* 触屏端：行内容可能换行，避免被桌面端的 max-height 裁切 */
+    .e-row {
+        max-height: none;
+        overflow: visible;
+    }
+
+    /* 触屏端没有 hover：历史列表操作按钮保持可见 */
+    .h-actions {
+        opacity: 1;
+    }
+
+    /* 触屏端没有 hover：所有邮箱行内操作按钮保持可见 */
+    .col-actions {
+        opacity: 1;
+        transform: none;
+    }
+    .hover-control-group {
+        opacity: 1;
+    }
+
     .mail-actions {
         opacity: 1;
         pointer-events: auto;

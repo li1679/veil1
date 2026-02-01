@@ -315,7 +315,24 @@ export function createRouter() {
 
       // 1) 管理员：用户名匹配 ADMIN_NAME + 密码匹配 ADMIN_PASSWORD
       if (name === ADMIN_NAME && ADMIN_PASSWORD && password === ADMIN_PASSWORD) {
-        const token = await createJwt(JWT_TOKEN, { role: 'admin', username: ADMIN_NAME, userId: 0 });
+        // 确保存在一个与 ADMIN_NAME 对应的 users 记录：用于“scope=own”历史邮箱持久化
+        // （严格管理员本身不走 users 表密码校验，但需要一个稳定的 userId 来绑定 mailboxes）
+        let adminUserId = 0;
+        try {
+          await DB.prepare(
+            "INSERT OR IGNORE INTO users (username, password_hash, role, can_send, mailbox_limit) VALUES (?, NULL, 'admin', 1, 999999)"
+          ).bind(ADMIN_NAME).run();
+          // 保底同步字段（避免之前存在同名用户但配额太小）
+          await DB.prepare(
+            "UPDATE users SET role = 'admin', can_send = 1, mailbox_limit = 999999 WHERE username = ?"
+          ).bind(ADMIN_NAME).run();
+          const { results: adminRows } = await DB.prepare('SELECT id FROM users WHERE username = ? LIMIT 1').bind(ADMIN_NAME).all();
+          adminUserId = Number(adminRows?.[0]?.id || 0);
+        } catch (_) {
+          adminUserId = 0;
+        }
+
+        const token = await createJwt(JWT_TOKEN, { role: 'admin', username: ADMIN_NAME, userId: adminUserId || 0 });
         const headers = new Headers({ 'Content-Type': 'application/json' });
         headers.set('Set-Cookie', buildSessionCookie(token, request.url));
         return new Response(JSON.stringify({ success: true, role: 'admin', can_send: 1, mailbox_limit: 9999 }), { headers });
