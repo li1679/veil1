@@ -18,6 +18,14 @@ export default {
    */
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    const corsConfig = getCorsConfig(env);
+
+    // 处理浏览器 CORS 预检请求（OPTIONS）：
+    // 必须在鉴权与数据库连接之前返回，否则外部跨域调用会被 401 拦截。
+    if (request.method === 'OPTIONS' && isApiPath(url.pathname)) {
+      return buildCorsPreflightResponse(request, corsConfig);
+    }
+
     let DB;
     try {
       DB = await getDatabaseWithValidation(env);
@@ -45,7 +53,7 @@ export default {
     // 尝试使用路由器处理请求
     const routeResponse = await router.handle(request, { request, env, ctx });
     if (routeResponse) {
-      return routeResponse;
+      return applyCorsIfNeeded(routeResponse, request, corsConfig);
     }
 
     // 使用资源管理器处理静态资源请求
@@ -193,4 +201,99 @@ export default {
     }
   }
 };
+
+function isApiPath(pathname) {
+  return pathname.startsWith('/api/') || pathname === '/receive';
+}
+
+function getCorsConfig(env) {
+  const raw = String(env?.CORS_ORIGINS || env?.CORS_ORIGIN || '').trim();
+  if (!raw) return null;
+  const origins = raw
+    .split(/[,\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!origins.length) return null;
+
+  const allowCredentials = String(env?.CORS_ALLOW_CREDENTIALS || '').trim().toLowerCase() === 'true';
+  const maxAge = Math.max(0, Math.floor(Number(env?.CORS_MAX_AGE || 86400)));
+  return {
+    origins,
+    allowAll: origins.includes('*'),
+    allowCredentials,
+    maxAge
+  };
+}
+
+function getAllowedOrigin(request, corsConfig) {
+  if (!corsConfig) return '';
+  const origin = request.headers.get('Origin') || '';
+  if (!origin) return '';
+  if (corsConfig.allowAll) return '*';
+  return corsConfig.origins.includes(origin) ? origin : '';
+}
+
+function appendVary(headers, value) {
+  const existing = headers.get('Vary');
+  if (!existing) {
+    headers.set('Vary', value);
+    return;
+  }
+  const parts = existing
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!parts.includes(value)) {
+    parts.push(value);
+    headers.set('Vary', parts.join(', '));
+  }
+}
+
+function buildCorsHeaders(request, corsConfig, { preflight } = { preflight: false }) {
+  const allowOrigin = getAllowedOrigin(request, corsConfig);
+  if (!allowOrigin) return null;
+
+  const allowCredentials = Boolean(corsConfig?.allowCredentials) && allowOrigin !== '*';
+  const headers = new Headers();
+  headers.set('Access-Control-Allow-Origin', allowOrigin);
+  headers.set('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type');
+  if (allowCredentials) headers.set('Access-Control-Allow-Credentials', 'true');
+  if (allowOrigin !== '*') appendVary(headers, 'Origin');
+
+  if (preflight) {
+    headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    const reqHeaders = request.headers.get('Access-Control-Request-Headers');
+    headers.set('Access-Control-Allow-Headers', reqHeaders || 'Content-Type, Authorization, X-Admin-Token');
+    headers.set('Access-Control-Max-Age', String(corsConfig?.maxAge ?? 86400));
+  }
+
+  return headers;
+}
+
+function buildCorsPreflightResponse(request, corsConfig) {
+  // 未配置 CORS 或不在允许列表：返回 204（不带允许头），由浏览器自行拦截。
+  const headers = buildCorsHeaders(request, corsConfig, { preflight: true });
+  return new Response(null, { status: 204, headers: headers || undefined });
+}
+
+function applyCorsIfNeeded(response, request, corsConfig) {
+  const url = new URL(request.url);
+  if (!isApiPath(url.pathname)) return response;
+  const headers = buildCorsHeaders(request, corsConfig, { preflight: false });
+  if (!headers) return response;
+
+  const merged = new Headers(response.headers);
+  for (const [k, v] of headers.entries()) {
+    if (k.toLowerCase() === 'vary') {
+      appendVary(merged, v);
+    } else {
+      merged.set(k, v);
+    }
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: merged
+  });
+}
 

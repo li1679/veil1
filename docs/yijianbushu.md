@@ -23,6 +23,8 @@
 - `MAIL_DOMAIN`（必填，逗号分隔多个域名）
 - `ADMIN_PASSWORD`（必填）
 - `JWT_TOKEN`（必填）
+- `ROOT_ADMIN_TOKEN`（可选但推荐：用于外部 API 调用的 Root 管理员令牌；不填则回退使用 JWT_TOKEN）
+- `PUBLIC_API_KEY`（可选：提供 `/api/public/*` 兼容接口给 Userscript/脚本使用，走 `X-API-Key`）
 - `ADMIN_NAME`（可选，默认 `admin`）
 
 > 说明：`wrangler.toml` 已启用 `keep_vars = true`，避免每次部署把你在 Dashboard 里配置的变量清空。

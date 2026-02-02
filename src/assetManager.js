@@ -87,22 +87,28 @@ export class AssetManager {
   async handleAssetRequest(request, env, mailDomains) {
     const url = new URL(request.url);
     const pathname = url.pathname;
-    const JWT_TOKEN = env.JWT_TOKEN || env.JWT_SECRET || '';
+    const JWT_SECRET = env.JWT_TOKEN || env.JWT_SECRET || '';
+    const ROOT_ADMIN_TOKEN =
+      env.ROOT_ADMIN_TOKEN ||
+      env.ROOT_TOKEN ||
+      env.ADMIN_API_TOKEN ||
+      env.ADMIN_TOKEN ||
+      '';
 
     // 检查路径是否被允许
     if (!this.isPathAllowed(pathname)) {
-      return await this.handleIllegalPath(request, env, JWT_TOKEN);
+      return await this.handleIllegalPath(request, env, JWT_SECRET, ROOT_ADMIN_TOKEN);
     }
 
     // 处理受保护的路径（需要管理员权限）
     if (this.isProtectedPath(pathname)) {
-      const authResult = await this.checkProtectedPathAuth(request, JWT_TOKEN, url);
+      const authResult = await this.checkProtectedPathAuth(request, JWT_SECRET, ROOT_ADMIN_TOKEN, url);
       if (authResult) return authResult;
     }
 
     // 处理只允许未登录用户的路径（登录页）
     if (this.isGuestOnlyPath(pathname)) {
-      const guestResult = await this.checkGuestOnlyPath(request, JWT_TOKEN, url);
+      const guestResult = await this.checkGuestOnlyPath(request, JWT_SECRET, ROOT_ADMIN_TOKEN, url);
       if (guestResult) return guestResult;
     }
 
@@ -116,15 +122,15 @@ export class AssetManager {
 
     // 处理特殊页面（需要注入数据或权限检查）
     if (pathname === '/' || pathname === '/index.html') {
-      return await this.handleIndexPage(mappedRequest, env, mailDomains, JWT_TOKEN);
+      return await this.handleIndexPage(mappedRequest, env, mailDomains, JWT_SECRET, ROOT_ADMIN_TOKEN);
     }
 
     if (pathname === '/admin.html') {
-      return await this.handleAdminPage(mappedRequest, env, JWT_TOKEN);
+      return await this.handleAdminPage(mappedRequest, env, JWT_SECRET, ROOT_ADMIN_TOKEN);
     }
 
     if (pathname === '/mailbox.html') {
-      return await this.handleMailboxPage(mappedRequest, env, JWT_TOKEN);
+      return await this.handleMailboxPage(mappedRequest, env, JWT_SECRET, ROOT_ADMIN_TOKEN);
     }
 
     // 其他静态资源直接返回（HTML 统一补齐 UTF-8 头，避免乱码）
@@ -144,14 +150,15 @@ export class AssetManager {
    * 处理非法路径访问
    * @param {Request} request - HTTP请求对象
    * @param {object} env - 环境变量
-   * @param {string} JWT_TOKEN - JWT令牌
+   * @param {string} jwtSecret - JWT签名密钥
+   * @param {string} rootAdminToken - Root 管理员令牌（可选）
    * @returns {Promise<Response>} HTTP响应
    */
-  async handleIllegalPath(request, env, JWT_TOKEN) {
+  async handleIllegalPath(request, env, jwtSecret, rootAdminToken) {
     const url = new URL(request.url);
     
     // 先检查登录状态
-    const payload = await resolveAuthPayload(request, JWT_TOKEN);
+    const payload = await resolveAuthPayload(request, jwtSecret, rootAdminToken);
     
     if (payload !== false) {
       // 已登录用户：根据角色重定向到合适的页面
@@ -169,12 +176,13 @@ export class AssetManager {
   /**
    * 检查受保护路径的权限
    * @param {Request} request - HTTP请求对象
-   * @param {string} JWT_TOKEN - JWT令牌
+   * @param {string} jwtSecret - JWT签名密钥
+   * @param {string} rootAdminToken - Root 管理员令牌（可选）
    * @param {URL} url - 请求URL
    * @returns {Promise<Response|null>} 如果需要重定向则返回Response，否则返回null
    */
-  async checkProtectedPathAuth(request, JWT_TOKEN, url) {
-    const payload = await resolveAuthPayload(request, JWT_TOKEN);
+  async checkProtectedPathAuth(request, jwtSecret, rootAdminToken, url) {
+    const payload = await resolveAuthPayload(request, jwtSecret, rootAdminToken);
     
     if (!payload) {
       const loading = new URL('/index.html', url);
@@ -199,8 +207,7 @@ export class AssetManager {
       }
     } else {
       // 其他受保护页面
-      const isAllowed = (payload.role === 'admin' || payload.role === 'guest');
-      if (!isAllowed) {
+      if (payload.role !== 'admin') {
         // 已登录但权限不足：引导回首页
         return Response.redirect(new URL('/', url).toString(), 302);
       }
@@ -212,12 +219,13 @@ export class AssetManager {
   /**
    * 检查只允许未登录用户的路径
    * @param {Request} request - HTTP请求对象
-   * @param {string} JWT_TOKEN - JWT令牌
+   * @param {string} jwtSecret - JWT签名密钥
+   * @param {string} rootAdminToken - Root 管理员令牌（可选）
    * @param {URL} url - 请求URL
    * @returns {Promise<Response|null>} 如果需要重定向则返回Response，否则返回null
    */
-  async checkGuestOnlyPath(request, JWT_TOKEN, url) {
-    const payload = await resolveAuthPayload(request, JWT_TOKEN);
+  async checkGuestOnlyPath(request, jwtSecret, rootAdminToken, url) {
+    const payload = await resolveAuthPayload(request, jwtSecret, rootAdminToken);
     
     if (payload !== false) {
       // 已登录：服务端直接重定向到首页，避免先渲染登录页
@@ -264,12 +272,13 @@ export class AssetManager {
    * @param {Request} request - HTTP请求对象
    * @param {object} env - 环境变量
    * @param {string[]} mailDomains - 邮件域名列表
-   * @param {string} JWT_TOKEN - JWT令牌
+   * @param {string} jwtSecret - JWT签名密钥
+   * @param {string} rootAdminToken - Root 管理员令牌（可选）
    * @returns {Promise<Response>} HTTP响应
    */
-  async handleIndexPage(request, env, mailDomains, JWT_TOKEN) {
+  async handleIndexPage(request, env, mailDomains, jwtSecret, rootAdminToken) {
     const url = new URL(request.url);
-    const payload = await resolveAuthPayload(request, JWT_TOKEN);
+    const payload = await resolveAuthPayload(request, jwtSecret, rootAdminToken);
     
     // 检查用户角色，邮箱用户重定向到专用页面
     if (payload && payload.role === 'mailbox') {
@@ -302,12 +311,13 @@ export class AssetManager {
    * 处理管理页请求
    * @param {Request} request - HTTP请求对象
    * @param {object} env - 环境变量
-   * @param {string} JWT_TOKEN - JWT令牌
+   * @param {string} jwtSecret - JWT签名密钥
+   * @param {string} rootAdminToken - Root 管理员令牌（可选）
    * @returns {Promise<Response>} HTTP响应
    */
-  async handleAdminPage(request, env, JWT_TOKEN) {
+  async handleAdminPage(request, env, jwtSecret, rootAdminToken) {
     const url = new URL(request.url);
-    const payload = await resolveAuthPayload(request, JWT_TOKEN);
+    const payload = await resolveAuthPayload(request, jwtSecret, rootAdminToken);
     
     if (!payload) {
       const loadingReq = new Request(
@@ -323,9 +333,8 @@ export class AssetManager {
     const isStrictAdmin = (payload.role === 'admin') && (
       username === '__root__' || normalizedUsername === ADMIN_NAME
     );
-    const isGuest = (payload.role === 'guest');
 
-    if (!isStrictAdmin && !isGuest) {
+    if (!isStrictAdmin) {
       // 返回首页
       return Response.redirect(new URL('/', url).toString(), 302);
     }
@@ -352,12 +361,13 @@ export class AssetManager {
    * 处理邮箱用户页面 (mailbox.html) 的请求
    * @param {Request} request - HTTP请求对象
    * @param {object} env - 环境变量
-   * @param {string} JWT_TOKEN - JWT令牌
+   * @param {string} jwtSecret - JWT签名密钥
+   * @param {string} rootAdminToken - Root 管理员令牌（可选）
    * @returns {Promise<Response>} HTTP响应
    */
-  async handleMailboxPage(request, env, JWT_TOKEN) {
+  async handleMailboxPage(request, env, jwtSecret, rootAdminToken) {
     const url = new URL(request.url);
-    const payload = await resolveAuthPayload(request, JWT_TOKEN);
+    const payload = await resolveAuthPayload(request, jwtSecret, rootAdminToken);
     
     if (!payload) {
       const loadingReq = new Request(
@@ -370,7 +380,7 @@ export class AssetManager {
     // 只有邮箱用户可以访问此页面
     if (payload.role !== 'mailbox') {
       // 非邮箱用户重定向到相应页面
-      if (payload.role === 'admin' || payload.role === 'guest') {
+      if (payload.role === 'admin' || payload.role === 'user') {
         return Response.redirect(new URL('/', url).toString(), 302);
       } else {
         return Response.redirect(new URL('/login.html', url).toString(), 302);
@@ -382,11 +392,11 @@ export class AssetManager {
   }
 
   /**
-   * 处理所有邮箱管理页（仅超级管理员和游客）
+   * 处理所有邮箱管理页（仅超级管理员）
    */
-  async handleAllMailboxesPage(request, env, JWT_TOKEN) {
+  async handleAllMailboxesPage(request, env, jwtSecret, rootAdminToken) {
     const url = new URL(request.url);
-    const payload = await resolveAuthPayload(request, JWT_TOKEN);
+    const payload = await resolveAuthPayload(request, jwtSecret, rootAdminToken);
     if (!payload) {
       const loadingReq = new Request(
         new URL('/index.html?redirect=%2Fmailboxes.html', url).toString(),
@@ -400,8 +410,7 @@ export class AssetManager {
     const isStrictAdmin = (payload.role === 'admin') && (
       username === '__root__' || normalizedUsername === ADMIN_NAME
     );
-    const isGuest = (payload.role === 'guest');
-    if (!isStrictAdmin && !isGuest){
+    if (!isStrictAdmin){
       return Response.redirect(new URL('/', url).toString(), 302);
     }
     const resp = await env.ASSETS.fetch(request);

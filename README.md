@@ -25,7 +25,7 @@
 - 邮件发送（Resend）
 
 ### 用户系统
-- 三层权限：StrictAdmin / User / MailboxUser
+- 权限角色：StrictAdmin / User / Mailbox
 - 用户管理（创建/编辑/删除）
 - 邮箱配额管理
 - 发件权限控制
@@ -56,11 +56,15 @@
 |--------|------|------|
 | TEMP_MAIL_DB | D1 数据库绑定 | 是 |
 | MAIL_EML | R2 存储桶绑定 | 是 |
-| MAIL_DOMAIN | 邮箱域名（支持多个，逗号分隔） | 是 |
+| MAIL_DOMAIN | 邮箱域名（支持多个，逗号/空格分隔） | 是 |
 | ADMIN_PASSWORD | 管理员密码 | 是 |
 | ADMIN_NAME | 管理员用户名（默认 admin） | 否 |
-| JWT_TOKEN | JWT 签名密钥 | 是 |
+| JWT_TOKEN | JWT 签名密钥（用于会话 Cookie） | 是 |
+| ROOT_ADMIN_TOKEN | Root 覆写令牌（外部 API 调用推荐；不填则回退用 JWT_TOKEN） | 否（但推荐） |
+| PUBLIC_API_KEY | /api/public/* 兼容层的 API Key（给 Userscript/脚本用，走 X-API-Key） | 否 |
 | RESEND_API_KEY | Resend 发件配置 | 否 |
+| CORS_ORIGINS | 允许跨域调用的 Origin（浏览器跨域才需要） | 否 |
+| CORS_ALLOW_CREDENTIALS | 是否允许跨域携带 Cookie（true/false） | 否 |
 
 ### 多域名发送配置
 
@@ -76,11 +80,36 @@ RESEND_API_KEY='{"domain1.com":"re_key1","domain2.com":"re_key2"}'
 
 完整接口说明请查看：[`docs/api.md`](docs/api.md)
 
+## API 调用（请求头写全，AI 也能直接用）
+
+Base URL：`https://你的域名`
+
+### 1) 请求头（必看）
+
+任选一种鉴权：
+
+- Root 管理员令牌（推荐，权限最大）：`Authorization: Bearer <ROOT_ADMIN_TOKEN>`（或 `X-Admin-Token: <ROOT_ADMIN_TOKEN>`）
+- API Key 模式（可选，仅 `/api/public/*`）：`X-API-Key: <PUBLIC_API_KEY>`
+
+JSON 请求（POST/PUT/PATCH）再加：
+
+- `Content-Type: application/json`
+
+### 2) 常用接口（按功能）
+
+- 创建邮箱：`POST /api/generate`、`POST /api/create`
+- 拉邮件列表（含验证码字段）：`GET /api/emails?mailbox=...`
+- 拉邮件详情：`GET /api/email/:id`
+- 备注（严格管理员）：`POST /api/mailboxes/remark`
+- API Key 模式（可选）：`GET /api/public/domains`、`POST /api/public/batch-create-emails`、`POST /api/public/extract-codes`
+
+> 更完整的参数与返回示例见：`docs/api.md`
+
 ## 注意事项
 
 - 静态资源更新后请在 Cloudflare 控制台执行 Purge Everything
 - R2 有免费额度限制，建议定期清理过期邮件
-- 生产环境务必修改 ADMIN_PASSWORD 和 JWT_TOKEN
+- 生产环境务必设置强密码与强密钥：`ADMIN_PASSWORD`、`JWT_TOKEN`，并建议单独设置 `ROOT_ADMIN_TOKEN`
 
 ## Star History
 

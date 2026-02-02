@@ -5,6 +5,8 @@ yarn-debug.log*
 yarn-error.log*
 
 .cursor
+.claude/
+
 # Wrangler
 .wrangler/
 worker-configuration.d.ts
