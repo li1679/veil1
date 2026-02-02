@@ -659,13 +659,13 @@ input[type=range]::-webkit-slider-thumb {
 }
 
 .e-header {
-    display: grid; grid-template-columns: 40px 2.2fr 1.4fr 1.4fr 1.2fr 1.2fr 100px;
+    display: grid; grid-template-columns: 40px 2.0fr 1.0fr 1.2fr 1.2fr 1.0fr 1.0fr 100px;
     padding: 14px 20px; background: #FAFAFA; border-bottom: 1px solid var(--ios-separator-light);
     font-size: 12px; font-weight: 600; color: var(--label-secondary); text-transform: uppercase;
     align-items: center;
 }
 .e-row {
-    display: grid; grid-template-columns: 40px 2.2fr 1.4fr 1.4fr 1.2fr 1.2fr 100px;
+    display: grid; grid-template-columns: 40px 2.0fr 1.0fr 1.2fr 1.2fr 1.0fr 1.0fr 100px;
     padding: 16px 20px; border-bottom: 1px solid var(--ios-separator-light);
     font-size: 14px; align-items: center;
     transition: all 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);

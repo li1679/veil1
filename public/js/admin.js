@@ -86,6 +86,7 @@ function applyMailboxDeletionsToHome(addresses = []) {
 let prefixMode = 'random';
 let selectedDomain = '';
 let prefixLength = 12;
+let randomDomainSuffix = false;
 
 // 轮询
 let inboxPollInterval = null;
@@ -226,6 +227,7 @@ function renderDomainDropdown() {
 }
 
 window.toggleDropdown = function() {
+    if (randomDomainSuffix) return;
     const dropdown = document.getElementById('domainOptions');
     if (dropdown) dropdown.classList.toggle('show');
 };
@@ -245,6 +247,32 @@ document.addEventListener('click', (e) => {
         if (dropdown) dropdown.classList.remove('show');
     }
 });
+
+function getDomainForGeneration() {
+    if (randomDomainSuffix && Array.isArray(domains) && domains.length > 0) {
+        return domains[Math.floor(Math.random() * domains.length)];
+    }
+    return selectedDomain || (domains && domains[0]) || '';
+}
+
+function updateRandomDomainUI() {
+    const sw = document.getElementById('randomDomainSwitch');
+    if (sw) sw.classList.toggle('on', randomDomainSuffix);
+
+    const wrapper = document.getElementById('domainSelectWrapper');
+    if (wrapper) {
+        wrapper.style.pointerEvents = randomDomainSuffix ? 'none' : '';
+        wrapper.style.opacity = randomDomainSuffix ? '0.6' : '';
+    }
+
+    const dropdown = document.getElementById('domainOptions');
+    if (randomDomainSuffix && dropdown) dropdown.classList.remove('show');
+}
+
+window.toggleRandomDomain = function() {
+    randomDomainSuffix = !randomDomainSuffix;
+    updateRandomDomainUI();
+};
 
 // ============================================
 // 前缀模式
@@ -279,6 +307,7 @@ window.updateLengthLabel = function(val) {
 window.generateEmail = async function() {
     try {
         let response;
+        const domain = getDomainForGeneration();
 
         if (prefixMode === 'custom') {
             const prefix = document.getElementById('customInputBox').value.trim();
@@ -286,9 +315,9 @@ window.generateEmail = async function() {
                 showToast('请输入前缀');
                 return;
             }
-            response = await mailboxAPI.create(prefix, selectedDomain);
+            response = await mailboxAPI.create(prefix, domain);
         } else {
-            response = await mailboxAPI.generate(selectedDomain, prefixMode, prefixLength);
+            response = await mailboxAPI.generate(domain, prefixMode, prefixLength);
         }
 
         if (response && response.address) {
@@ -745,10 +774,28 @@ async function loadUsers() {
             selectedUserIds.clear();
         }
         renderUserTable();
+        renderUserFilter();
     } catch (error) {
         console.error('Failed to load users:', error);
         showToast('加载用户失败');
     }
+}
+
+function renderUserFilter() {
+    const filter = document.getElementById('userFilter');
+    if (!filter) return;
+
+    const currentValue = String(filter.value || '');
+    const options = [
+        '<option value="">全部用户</option>',
+        ...(users || []).map((u) => {
+            const id = (u && typeof u.id !== 'undefined') ? String(u.id) : '';
+            const username = escapeHtml(String(u?.username || ''));
+            if (!id) return '';
+            return `<option value="${id}" ${id === currentValue ? 'selected' : ''}>${username}</option>`;
+        }).filter(Boolean),
+    ];
+    filter.innerHTML = options.join('');
 }
 
 function renderUserTable() {
@@ -1168,10 +1215,12 @@ window.deleteSubEmail = function(userId, mailboxId) {
 async function loadAllMailboxes() {
     try {
         const domainFilter = document.getElementById('domainFilter')?.value || '';
+        const userFilter = document.getElementById('userFilter')?.value || '';
         const search = document.getElementById('emailSearchInput')?.value || '';
 
         const response = await adminMailboxAPI.getAllMailboxes({
             domain: domainFilter,
+            created_by: userFilter,
             search: search
         });
 
@@ -1226,6 +1275,9 @@ function renderAllMailboxes() {
                 <div class="col-email">
                     <i class="ph ph-envelope-simple" style="color: #999;"></i>
                     <span>${item.address}</span>
+                </div>
+                <div style="display:flex; align-items:center; min-width:0;">
+                    <span class="locked-hint" title="创建者不可编辑">${escapeHtml(String(item.created_by_username || '系统'))}</span>
                 </div>
                 <div class="col-remark" onclick="openRemarkModal(${item.id}, '${safeAddress}')">
                     <i class="ph-bold ph-note-pencil" style="font-size: 14px; opacity: 0.75;"></i>
@@ -1527,6 +1579,10 @@ window.filterAllEmails = function(query) {
 };
 
 window.filterByDomain = function() {
+    loadAllMailboxes();
+};
+
+window.filterByUser = function() {
     loadAllMailboxes();
 };
 

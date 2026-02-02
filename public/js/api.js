@@ -477,6 +477,7 @@ export const adminMailboxAPI = {
         const queryParams = new URLSearchParams();
         if (params.domain) queryParams.set('domain', params.domain);
         if (params.search) queryParams.set('q', params.search);
+        if (params.created_by) queryParams.set('created_by', params.created_by);
 
         const limit = params.limit ? Number(params.limit) : null;
         const page = params.page ? Number(params.page) : null;

@@ -29,6 +29,7 @@ function getLastMailboxStorageKey() {
 let prefixMode = 'random';
 let selectedDomain = '';
 let prefixLength = 12;
+let randomDomainSuffix = false;
 
 // 轮询
 let inboxPollInterval = null;
@@ -124,6 +125,7 @@ function renderDomainDropdown() {
 }
 
 window.toggleDropdown = function() {
+    if (randomDomainSuffix) return;
     const dropdown = document.getElementById('domainOptions');
     if (dropdown) dropdown.classList.toggle('show');
 };
@@ -142,6 +144,32 @@ document.addEventListener('click', (e) => {
         if (dropdown) dropdown.classList.remove('show');
     }
 });
+
+function getDomainForGeneration() {
+    if (randomDomainSuffix && Array.isArray(domains) && domains.length > 0) {
+        return domains[Math.floor(Math.random() * domains.length)];
+    }
+    return selectedDomain || (domains && domains[0]) || '';
+}
+
+function updateRandomDomainUI() {
+    const sw = document.getElementById('randomDomainSwitch');
+    if (sw) sw.classList.toggle('on', randomDomainSuffix);
+
+    const wrapper = document.getElementById('domainSelectWrapper');
+    if (wrapper) {
+        wrapper.style.pointerEvents = randomDomainSuffix ? 'none' : '';
+        wrapper.style.opacity = randomDomainSuffix ? '0.6' : '';
+    }
+
+    const dropdown = document.getElementById('domainOptions');
+    if (randomDomainSuffix && dropdown) dropdown.classList.remove('show');
+}
+
+window.toggleRandomDomain = function() {
+    randomDomainSuffix = !randomDomainSuffix;
+    updateRandomDomainUI();
+};
 
 // ============================================
 // 前缀模式
@@ -183,6 +211,7 @@ window.generateEmail = async function() {
 
     try {
         let response;
+        const domain = getDomainForGeneration();
 
         if (prefixMode === 'custom') {
             const prefix = document.getElementById('customInputBox').value.trim();
@@ -190,9 +219,9 @@ window.generateEmail = async function() {
                 showToast('请输入前缀');
                 return;
             }
-            response = await mailboxAPI.create(prefix, selectedDomain);
+            response = await mailboxAPI.create(prefix, domain);
         } else {
-            response = await mailboxAPI.generate(selectedDomain, prefixMode, prefixLength);
+            response = await mailboxAPI.generate(domain, prefixMode, prefixLength);
         }
 
         if (response && response.address) {

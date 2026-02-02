@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS mailboxes (
   domain TEXT NOT NULL,
   remark TEXT,
   password_hash TEXT,
+  created_by_user_id INTEGER,
   can_login INTEGER DEFAULT 0,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   last_accessed_at TEXT,
@@ -18,6 +19,7 @@ CREATE TABLE IF NOT EXISTS mailboxes (
 
 CREATE INDEX IF NOT EXISTS idx_mailboxes_address ON mailboxes(address);
 CREATE INDEX IF NOT EXISTS idx_mailboxes_is_pinned ON mailboxes(is_pinned DESC);
+CREATE INDEX IF NOT EXISTS idx_mailboxes_created_by_user ON mailboxes(created_by_user_id);
 
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -33,6 +33,7 @@ async function ensureSchema(db) {
   await ensureColumns(db, 'mailboxes', {
     remark: 'TEXT',
     password_hash: 'TEXT',
+    created_by_user_id: 'INTEGER',
     created_at: 'TEXT DEFAULT CURRENT_TIMESTAMP',
     last_accessed_at: 'TEXT',
     expires_at: 'TEXT',
@@ -124,7 +125,7 @@ async function performFirstTimeSetup(db) {
 
   if (!hasAllTables) {
     // 创建表结构（仅在表不存在时）
-    await db.exec("CREATE TABLE IF NOT EXISTS mailboxes (id INTEGER PRIMARY KEY AUTOINCREMENT, address TEXT NOT NULL UNIQUE, local_part TEXT NOT NULL, domain TEXT NOT NULL, remark TEXT, password_hash TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, last_accessed_at TEXT, expires_at TEXT, is_pinned INTEGER DEFAULT 0, can_login INTEGER DEFAULT 0);");
+    await db.exec("CREATE TABLE IF NOT EXISTS mailboxes (id INTEGER PRIMARY KEY AUTOINCREMENT, address TEXT NOT NULL UNIQUE, local_part TEXT NOT NULL, domain TEXT NOT NULL, remark TEXT, password_hash TEXT, created_by_user_id INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP, last_accessed_at TEXT, expires_at TEXT, is_pinned INTEGER DEFAULT 0, can_login INTEGER DEFAULT 0);");
     await db.exec("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, mailbox_id INTEGER NOT NULL, sender TEXT NOT NULL, to_addrs TEXT NOT NULL DEFAULT '', subject TEXT NOT NULL, verification_code TEXT, preview TEXT, r2_bucket TEXT NOT NULL DEFAULT 'mail-eml', r2_object_key TEXT NOT NULL DEFAULT '', received_at TEXT DEFAULT CURRENT_TIMESTAMP, is_read INTEGER DEFAULT 0, FOREIGN KEY(mailbox_id) REFERENCES mailboxes(id));");
     await db.exec("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password_hash TEXT, role TEXT NOT NULL DEFAULT 'user', can_send INTEGER NOT NULL DEFAULT 0, mailbox_limit INTEGER NOT NULL DEFAULT 10, created_at TEXT DEFAULT CURRENT_TIMESTAMP);");
     await db.exec("CREATE TABLE IF NOT EXISTS user_mailboxes (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, mailbox_id INTEGER NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, is_pinned INTEGER NOT NULL DEFAULT 0, UNIQUE(user_id, mailbox_id), FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE, FOREIGN KEY(mailbox_id) REFERENCES mailboxes(id) ON DELETE CASCADE);");
@@ -133,10 +134,29 @@ async function performFirstTimeSetup(db) {
 
   await ensureSchema(db);
 
+  // 补齐历史数据：为已存在的邮箱回填创建者（取最早绑定该邮箱的用户）
+  try {
+    await db.exec(`
+      UPDATE mailboxes
+      SET created_by_user_id = (
+        SELECT um.user_id
+        FROM user_mailboxes um
+        WHERE um.mailbox_id = mailboxes.id
+        ORDER BY datetime(um.created_at) ASC
+        LIMIT 1
+      )
+      WHERE created_by_user_id IS NULL
+        AND EXISTS (SELECT 1 FROM user_mailboxes um2 WHERE um2.mailbox_id = mailboxes.id);
+    `);
+  } catch (_) {
+    // ignore
+  }
+
   // 创建索引
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_mailboxes_address ON mailboxes(address);`);
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_mailboxes_is_pinned ON mailboxes(is_pinned DESC);`);
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_mailboxes_address_created ON mailboxes(address, created_at DESC);`);
+  await db.exec(`CREATE INDEX IF NOT EXISTS idx_mailboxes_created_by_user ON mailboxes(created_by_user_id);`);
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_mailbox_id ON messages(mailbox_id);`);
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_received_at ON messages(received_at DESC);`);
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_r2_object_key ON messages(r2_object_key);`);
@@ -174,6 +194,7 @@ export async function setupDatabase(db) {
       domain TEXT NOT NULL,
       remark TEXT,
       password_hash TEXT,
+      created_by_user_id INTEGER,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       last_accessed_at TEXT,
       expires_at TEXT,
@@ -245,6 +266,7 @@ export async function setupDatabase(db) {
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_mailboxes_address ON mailboxes(address);`);
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_mailboxes_is_pinned ON mailboxes(is_pinned DESC);`);
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_mailboxes_address_created ON mailboxes(address, created_at DESC);`);
+  await db.exec(`CREATE INDEX IF NOT EXISTS idx_mailboxes_created_by_user ON mailboxes(created_by_user_id);`);
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_mailbox_id ON messages(mailbox_id);`);
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_received_at ON messages(received_at DESC);`);
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_r2_object_key ON messages(r2_object_key);`);
@@ -270,11 +292,12 @@ export async function setupDatabase(db) {
  * @returns {Promise<number>} 邮箱ID
  * @throws {Error} 当邮箱地址无效时抛出异常
  */
-export async function getOrCreateMailboxId(db, address) {
+export async function getOrCreateMailboxId(db, address, options = {}) {
   const { getCachedMailboxId, updateMailboxIdCache } = await import('./cacheHelper.js');
   
   const normalized = String(address || '').trim().toLowerCase();
   if (!normalized) throw new Error('无效的邮箱地址');
+  const createdByUserId = Number(options?.createdByUserId || 0);
   
   // 先检查缓存
   const cachedId = await getCachedMailboxId(db, normalized);
@@ -306,8 +329,8 @@ export async function getOrCreateMailboxId(db, address) {
   
   // 创建新邮箱
   await db.prepare(
-    'INSERT INTO mailboxes (address, local_part, domain, password_hash, last_accessed_at) VALUES (?, ?, ?, NULL, CURRENT_TIMESTAMP)'
-  ).bind(normalized, local_part, domain).run();
+    'INSERT INTO mailboxes (address, local_part, domain, password_hash, created_by_user_id, last_accessed_at) VALUES (?, ?, ?, NULL, ?, CURRENT_TIMESTAMP)'
+  ).bind(normalized, local_part, domain, createdByUserId || null).run();
   
   // 查询新创建的ID
   const created = await db.prepare('SELECT id FROM mailboxes WHERE address = ? LIMIT 1').bind(normalized).all();
@@ -654,8 +677,6 @@ export async function assignMailboxToUser(db, { userId = null, username = null, 
   
   const normalized = String(address || '').trim().toLowerCase();
   if (!normalized) throw new Error('邮箱地址无效');
-  // 查询或创建邮箱
-  const mailboxId = await getOrCreateMailboxId(db, normalized);
 
   // 获取用户 ID
   let uid = userId;
@@ -671,8 +692,19 @@ export async function assignMailboxToUser(db, { userId = null, username = null, 
   const quota = await getCachedUserQuota(db, uid);
   if (quota.used >= quota.limit) throw new Error('已达到邮箱上限');
 
+  // 查询或创建邮箱（并记录创建者）
+  const mailboxId = await getOrCreateMailboxId(db, normalized, { createdByUserId: uid });
+
   // 绑定（唯一约束避免重复）
   await db.prepare('INSERT OR IGNORE INTO user_mailboxes (user_id, mailbox_id) VALUES (?, ?)').bind(uid, mailboxId).run();
+
+  // 为历史/外部创建的邮箱补齐创建者（不覆盖已有值）
+  try {
+    await db.prepare('UPDATE mailboxes SET created_by_user_id = COALESCE(created_by_user_id, ?) WHERE id = ?')
+      .bind(uid, mailboxId).run();
+  } catch (_) {
+    // ignore
+  }
   
   // 使缓存失效，下次查询时会重新获取
   invalidateUserQuotaCache(uid);

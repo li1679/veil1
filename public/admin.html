@@ -101,12 +101,22 @@
                                 <div class="group-header">生成配置</div>
                                 <div class="ios-card">
                                     <div style="font-size:13px; margin-bottom:6px; font-weight:500;">域名后缀</div>
-                                    <div class="custom-select-wrapper">
+                                    <div class="custom-select-wrapper" id="domainSelectWrapper">
                                         <div class="select-trigger" onclick="toggleDropdown()">
                                             <span id="selectedDomain">加载中...</span>
                                             <i class="ph-bold ph-caret-down" style="color:#86868B;"></i>
                                         </div>
                                         <ul class="options-list" id="domainOptions"></ul>
+                                    </div>
+
+                                    <div class="form-row" style="display:flex; justify-content:space-between; align-items:center; background:#F9F9F9; padding:12px; border-radius:8px; margin-bottom:20px;">
+                                        <div>
+                                            <div style="font-size:14px; font-weight:500;">随机域名后缀</div>
+                                            <div style="font-size:12px; color:#3C3C4399;">开启后每次生成都会随机选择域名</div>
+                                        </div>
+                                        <div class="ios-switch" id="randomDomainSwitch" onclick="toggleRandomDomain()">
+                                            <div class="ios-switch-thumb"></div>
+                                        </div>
                                     </div>
 
                                     <div style="font-size:13px; margin-bottom:6px; font-weight:500;">前缀模式</div>
@@ -209,6 +219,9 @@
                             <p>管理系统中所有生成的邮箱账号</p>
                         </div>
                         <div class="filter-row">
+                            <select class="filter-select" id="userFilter" onchange="filterByUser()">
+                                <option value="">全部用户</option>
+                            </select>
                             <select class="filter-select" id="domainFilter" onchange="filterByDomain()">
                                 <option value="">全部域名</option>
                             </select>
@@ -226,6 +239,7 @@
                                      <div class="custom-checkbox" id="selectAllEmailsCheckbox" onclick="toggleSelectAllEmails()"></div>
                                  </div>
                                  <div>邮箱地址</div>
+                                 <div>创建者</div>
                                  <div>备注</div>
                                  <div>登录密码</div>
                                  <div>登录状态</div>

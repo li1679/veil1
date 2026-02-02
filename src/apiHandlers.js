@@ -91,6 +91,85 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
     return ADMIN_NAME ? uname === ADMIN_NAME : false;
   }
 
+  function getAuthContext() {
+    const payload = getJwtPayload();
+    return {
+      payload,
+      role: String(payload?.role || ''),
+      uid: Number(payload?.userId || 0),
+      mailboxId: Number(payload?.mailboxId || 0),
+      mailboxAddress: String(payload?.mailboxAddress || '').trim().toLowerCase(),
+    };
+  }
+
+  async function userOwnsMailbox(userId, mailboxId) {
+    const uid = Number(userId || 0);
+    const mid = Number(mailboxId || 0);
+    if (!uid || !mid) return false;
+    const { results } = await db.prepare(
+      'SELECT 1 FROM user_mailboxes WHERE user_id = ? AND mailbox_id = ? LIMIT 1'
+    ).bind(uid, mid).all();
+    return !!(results && results.length);
+  }
+
+  async function ensureMailboxAccess(mailboxId, mailboxAddressNormalized) {
+    if (isStrictAdmin()) return null;
+
+    const { role, uid, mailboxId: tokenMailboxId, mailboxAddress: tokenMailboxAddress } = getAuthContext();
+
+    if (role === 'mailbox') {
+      const ok = (tokenMailboxId && mailboxId && tokenMailboxId === mailboxId) ||
+        (tokenMailboxAddress && mailboxAddressNormalized && tokenMailboxAddress === mailboxAddressNormalized);
+      if (!ok) return new Response('无权访问此邮箱', { status: 403 });
+      return null;
+    }
+
+    if (!uid) return new Response('Forbidden', { status: 403 });
+    const ok = await userOwnsMailbox(uid, mailboxId);
+    if (!ok) return new Response('无权访问此邮箱', { status: 403 });
+    return null;
+  }
+
+  async function ensureMessageAccess(emailId) {
+    if (isStrictAdmin()) return null;
+
+    const { role, uid, mailboxId: tokenMailboxId } = getAuthContext();
+    const id = Number(emailId || 0);
+    if (!id) return new Response('无效的邮件ID', { status: 400 });
+
+    // 邮箱用户：限制只能访问自己的邮箱，并遵循24小时限制
+    if (role === 'mailbox') {
+      if (!tokenMailboxId) return new Response('Forbidden', { status: 403 });
+      let timeFilter = '';
+      let timeParam = [];
+      if (isMailboxOnly) {
+        const twentyFourHoursAgo = formatD1Timestamp(new Date(Date.now() - 24 * 60 * 60 * 1000));
+        timeFilter = ' AND received_at >= ?';
+        timeParam = [twentyFourHoursAgo];
+      }
+      const { results } = await db.prepare(
+        `SELECT 1 FROM messages WHERE id = ? AND mailbox_id = ?${timeFilter} LIMIT 1`
+      ).bind(id, tokenMailboxId, ...timeParam).all();
+      if (!results || results.length === 0) {
+        return new Response('邮件不存在或已超过24小时访问期限', { status: 404 });
+      }
+      return null;
+    }
+
+    if (!uid) return new Response('Forbidden', { status: 403 });
+    const { results } = await db.prepare(`
+      SELECT 1
+      FROM messages msg
+      JOIN user_mailboxes um ON um.mailbox_id = msg.mailbox_id
+      WHERE msg.id = ? AND um.user_id = ?
+      LIMIT 1
+    `).bind(id, uid).all();
+    if (!results || results.length === 0) {
+      return new Response('无权访问此邮件', { status: 403 });
+    }
+    return null;
+  }
+
   async function resolveAdminUserId(){
     const payload = getJwtPayload();
     let uid = Number(payload?.userId || 0);
@@ -124,6 +203,60 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
     let out = '';
     for (let i = 0; i < bytes.length; i++) out += bytes[i].toString(16).padStart(2, '0');
     return out;
+  }
+
+  function generateHumanNamePrefix(maxLength = 12) {
+    const max = Math.max(4, Math.min(32, Number(maxLength) || 12));
+    const firstNames = [
+      'liam', 'noah', 'oliver', 'elijah', 'james', 'william', 'benjamin', 'lucas', 'henry', 'theodore',
+      'jack', 'levi', 'alex', 'mason', 'michael', 'ethan', 'daniel', 'jacob', 'logan', 'sam',
+      'sebastian', 'jackson', 'aiden', 'owen', 'wyatt', 'john', 'david', 'joseph', 'carter', 'luke',
+      'isaac', 'jayden', 'matthew', 'julian', 'leo', 'nathan', 'ryan', 'adam', 'brian', 'kevin',
+      'olivia', 'emma', 'amelia', 'ava', 'sophia', 'isabella', 'mia', 'charlotte', 'harper', 'evelyn',
+      'abigail', 'emily', 'ella', 'aria', 'scarlett', 'grace', 'chloe', 'lily', 'zoey', 'nora',
+      'hazel', 'riley', 'violet', 'stella', 'hannah', 'audrey', 'alice', 'lucy', 'claire', 'julia'
+    ];
+    const lastNames = [
+      'smith', 'johnson', 'williams', 'brown', 'jones', 'miller', 'davis', 'wilson', 'anderson', 'thomas',
+      'taylor', 'moore', 'jackson', 'martin', 'lee', 'thompson', 'white', 'harris', 'clark', 'lewis',
+      'robinson', 'walker', 'young', 'allen', 'king', 'wright', 'scott', 'hill', 'green', 'adams',
+      'nelson', 'baker', 'hall', 'rivera', 'campbell', 'mitchell', 'carter', 'roberts', 'gomez', 'phillips',
+      'evans', 'turner', 'diaz', 'parker', 'cruz', 'edwards', 'collins', 'reyes', 'morris', 'murphy',
+      'cook', 'rogers', 'morgan', 'bell', 'cooper', 'richardson', 'ward', 'peterson', 'gray', 'hughes',
+      'watson', 'brooks', 'kelly', 'sanders', 'price', 'bennett', 'wood', 'barnes', 'ross', 'henderson',
+      'coleman', 'jenkins', 'perry', 'powell', 'long', 'patterson', 'nguyen', 'flores', 'torres', 'ramirez'
+    ];
+
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+    const sep = Math.random() < 0.75 ? '.' : '_';
+
+    const first = String(pick(firstNames));
+    const last = String(pick(lastNames));
+
+    const candidates = [
+      `${first}${sep}${last}`,
+      `${first}${sep}${last.slice(0, 1)}`,
+      `${first.slice(0, 1)}${sep}${last}`,
+      `${first}${last}`,
+      `${first.slice(0, 1)}${last}`,
+      `${first.slice(0, 3)}${sep}${last.slice(0, 3)}`,
+      `${first.slice(0, 4)}${last.slice(0, 4)}`,
+    ].map((s) => s.replace(/[^a-z0-9._-]/g, ''));
+
+    let base = candidates.find((s) => s.length >= 4 && s.length <= max);
+    if (!base) {
+      // 兜底：截断或随机
+      base = candidates[0] || generateRandomId(Math.min(12, max));
+      base = base.slice(0, max).replace(/^[._-]+|[._-]+$/g, '');
+      if (base.length < 4) base = generateRandomId(max);
+    }
+
+    // 降低碰撞：按需加 2 位数字
+    if (base.length + 2 <= max && Math.random() < 0.35) {
+      base += String(Math.floor(Math.random() * 90) + 10);
+    }
+
+    return base;
   }
   function formatD1Timestamp(date){
     // D1 CURRENT_TIMESTAMP uses "YYYY-MM-DD HH:MM:SS" for string comparisons.
@@ -274,7 +407,7 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
       let prefix;
       if (prefixMode === 'name') {
         // 人名模式：生成类似人名的前缀
-        prefix = generateRandomId(lengthParam);
+        prefix = generateHumanNamePrefix(lengthParam);
       } else {
         // 随机模式
         prefix = generateRandomId(lengthParam);
@@ -784,6 +917,9 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
       // 纯读：不存在则返回空数组，不创建
       const mailboxId = await getMailboxIdByAddress(db, normalized);
       if (!mailboxId) return Response.json([]);
+
+      const access = await ensureMailboxAccess(mailboxId, normalized);
+      if (access) return access;
       
       // 邮箱用户只能查看近24小时的邮件
       let timeFilter = '';
@@ -844,6 +980,16 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
         const arr = ids.map(id => buildMockEmailDetail(id));
         return Response.json(arr);
       }
+
+      const { role, uid, mailboxId: tokenMailboxId } = getAuthContext();
+      const strict = isStrictAdmin();
+      if (!strict) {
+        if (role === 'mailbox') {
+          if (!tokenMailboxId) return new Response('Forbidden', { status: 403 });
+        } else if (!uid) {
+          return new Response('Forbidden', { status: 403 });
+        }
+      }
       
       // 邮箱用户只能查看近24小时的邮件
       let timeFilter = '';
@@ -856,16 +1002,40 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
       
       const placeholders = ids.map(()=>'?').join(',');
       try{
+        const baseSql = strict
+          ? `FROM messages msg WHERE msg.id IN (${placeholders})${timeFilter}`
+          : (role === 'mailbox'
+            ? `FROM messages msg WHERE msg.id IN (${placeholders}) AND msg.mailbox_id = ?${timeFilter}`
+            : `FROM messages msg JOIN user_mailboxes um ON um.mailbox_id = msg.mailbox_id WHERE msg.id IN (${placeholders}) AND um.user_id = ?`);
+        const bindArgs = strict
+          ? [...ids, ...timeParam]
+          : (role === 'mailbox'
+            ? [...ids, tokenMailboxId, ...timeParam]
+            : [...ids, uid]);
         const { results } = await db.prepare(`
-          SELECT id, sender, to_addrs, subject, verification_code, preview, r2_bucket, r2_object_key, received_at, is_read
-          FROM messages WHERE id IN (${placeholders})${timeFilter}
-        `).bind(...ids, ...timeParam).all();
+          SELECT msg.id as id, msg.sender as sender, msg.to_addrs as to_addrs, msg.subject as subject,
+                 msg.verification_code as verification_code, msg.preview as preview, msg.r2_bucket as r2_bucket,
+                 msg.r2_object_key as r2_object_key, msg.received_at as received_at, msg.is_read as is_read
+          ${baseSql}
+        `).bind(...bindArgs).all();
         return Response.json(results || []);
       }catch(e){
+        const baseSql = strict
+          ? `FROM messages msg WHERE msg.id IN (${placeholders})${timeFilter}`
+          : (role === 'mailbox'
+            ? `FROM messages msg WHERE msg.id IN (${placeholders}) AND msg.mailbox_id = ?${timeFilter}`
+            : `FROM messages msg JOIN user_mailboxes um ON um.mailbox_id = msg.mailbox_id WHERE msg.id IN (${placeholders}) AND um.user_id = ?`);
+        const bindArgs = strict
+          ? [...ids, ...timeParam]
+          : (role === 'mailbox'
+            ? [...ids, tokenMailboxId, ...timeParam]
+            : [...ids, uid]);
         const { results } = await db.prepare(`
-          SELECT id, sender, subject, content, html_content, received_at, is_read
-          FROM messages WHERE id IN (${placeholders})${timeFilter}
-        `).bind(...ids, ...timeParam).all();
+          SELECT msg.id as id, msg.sender as sender, msg.subject as subject,
+                 msg.content as content, msg.html_content as html_content,
+                 msg.received_at as received_at, msg.is_read as is_read
+          ${baseSql}
+        `).bind(...bindArgs).all();
         return Response.json(results || []);
       }
     }catch(e){
@@ -881,6 +1051,8 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
     const q = String(url.searchParams.get('q') || '').trim().toLowerCase();
     const domain = String(url.searchParams.get('domain') || '').trim().toLowerCase();
     const canLoginParam = String(url.searchParams.get('can_login') || '').trim();
+    const createdByParam = String(url.searchParams.get('created_by') || '').trim();
+    const createdByUserId = Number(createdByParam || 0);
     const scope = String(url.searchParams.get('scope') || '').trim().toLowerCase();
     const ownOnly = scope === 'own' || scope === 'mine' || scope === 'self';
     if (isMock) {
@@ -916,15 +1088,23 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
         } else if (canLoginParam === 'false') {
           whereConditions.push('m.can_login = 0');
         }
+
+        // 创建者筛选
+        if (createdByUserId && createdByUserId > 0) {
+          whereConditions.push('m.created_by_user_id = ?');
+          bindParams.push(createdByUserId);
+        }
         
         const whereClause = whereConditions.length > 0 ? 'WHERE ' + whereConditions.join(' AND ') : '';
         bindParams.push(limit, offset);
         
         const { results } = await db.prepare(`
           SELECT m.id, m.address, m.created_at, COALESCE(m.remark, '') AS remark, COALESCE(um.is_pinned, 0) AS is_pinned,
+                 m.created_by_user_id AS created_by_user_id, COALESCE(cu.username, '') AS created_by_username,
                  CASE WHEN (m.password_hash IS NULL OR m.password_hash = '') THEN 1 ELSE 0 END AS password_is_default,
                  COALESCE(m.can_login, 0) AS can_login
           FROM mailboxes m
+          LEFT JOIN users cu ON cu.id = m.created_by_user_id
           LEFT JOIN user_mailboxes um ON um.mailbox_id = m.id AND um.user_id = ?
           ${whereClause}
           ORDER BY is_pinned DESC, m.created_at DESC
@@ -937,6 +1117,8 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
           created_at: r.created_at,
           remark: r.remark || '',
           is_pinned: r.is_pinned,
+          created_by_user_id: r.created_by_user_id || null,
+          created_by_username: r.created_by_username || '',
           password_is_default: r.password_is_default,
           can_login: r.can_login,
           email_count: r.email_count || 0
@@ -1310,6 +1492,8 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
   if (request.method === 'GET' && path.startsWith('/api/email/') && path.endsWith('/download')){
     if (options.mockOnly) return new Response('演示模式不可下载', { status: 403 });
     const id = path.split('/')[3];
+    const access = await ensureMessageAccess(id);
+    if (access) return access;
     const { results } = await db.prepare('SELECT r2_bucket, r2_object_key FROM messages WHERE id = ?').bind(id).all();
     const row = (results||[])[0];
     if (!row || !row.r2_object_key) return new Response('未找到对象', { status: 404 });
@@ -1332,6 +1516,9 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
       return Response.json(buildMockEmailDetail(emailId));
     }
     try{
+      const access = await ensureMessageAccess(emailId);
+      if (access) return access;
+
       // 邮箱用户需要验证邮件是否在24小时内
       let timeFilter = '';
       let timeParam = [];
@@ -1402,6 +1589,9 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
     }
     
     try {
+      const access = await ensureMessageAccess(emailId);
+      if (access) return access;
+
       // 优化：直接删除，通过 D1 的 changes 判断是否成功，减少 COUNT 查询
       const result = await db.prepare(`DELETE FROM messages WHERE id = ?`).bind(emailId).run();
       
@@ -1432,6 +1622,9 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
       if (!mailboxId) {
         return Response.json({ success: true, deletedCount: 0 });
       }
+
+      const access = await ensureMailboxAccess(mailboxId, normalized);
+      if (access) return access;
       
       // 优化：直接删除，通过 meta.changes 获取删除数量，减少 COUNT 查询
       const result = await db.prepare(`DELETE FROM messages WHERE mailbox_id = ?`).bind(mailboxId).run();

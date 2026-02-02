@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS mailboxes (
   domain TEXT NOT NULL,
   remark TEXT,
   password_hash TEXT,
+  created_by_user_id INTEGER,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   last_accessed_at TEXT,
   expires_at TEXT,
@@ -80,6 +81,7 @@ CREATE TABLE IF NOT EXISTS sent_emails (
 CREATE INDEX IF NOT EXISTS idx_mailboxes_address ON mailboxes(address);
 CREATE INDEX IF NOT EXISTS idx_mailboxes_is_pinned ON mailboxes(is_pinned DESC);
 CREATE INDEX IF NOT EXISTS idx_mailboxes_address_created ON mailboxes(address, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mailboxes_created_by_user ON mailboxes(created_by_user_id);
 
 -- messages 索引
 CREATE INDEX IF NOT EXISTS idx_messages_mailbox_id ON messages(mailbox_id);
