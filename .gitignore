@@ -101,3 +101,6 @@ Thumbs.db
 /asset/bookmarks_2025_9_5.html
 
 eml
+
+# Local-only assets (do not sync to GitHub)
+新建文件夹/
