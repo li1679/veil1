@@ -423,8 +423,16 @@
                 当前正在修改 <span id="pwdEditEmail" style="color: var(--accent-blue); font-weight: 500;"></span> 的密码。
             </p>
 
+            <label style="font-size: 13px; font-weight: 600; color: #333;">原密码</label>
+            <div class="input-group">
+                <input type="text" class="form-input" id="oldPasswordInput" readonly>
+                <button class="btn btn-ghost" style="height: 38px; border-radius: 10px; padding: 0 14px;" onclick="copyOldPassword(event)">复制</button>
+            </div>
+            <div id="oldPasswordHint" style="font-size: 12px; color: #999; margin-top: 6px; display: flex; align-items: center; gap: 4px;"></div>
+
+            <div style="height: 14px;"></div>
             <label style="font-size: 13px; font-weight: 600; color: #333;">新密码</label>
-            <input type="password" class="form-input" id="newPasswordInput" placeholder="输入新密码">
+            <input type="password" class="form-input" id="newPasswordInput" autocomplete="new-password">
             <div style="font-size: 12px; color: #999; margin-top: 6px; display: flex; align-items: center; gap: 4px;">
                 <i class="ph-fill ph-info"></i> 默认密码通常为邮箱地址本身
             </div>

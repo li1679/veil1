@@ -60,6 +60,7 @@
 | ADMIN_PASSWORD | 管理员密码 | 是 |
 | ADMIN_NAME | 管理员用户名（默认 admin） | 否 |
 | JWT_TOKEN | JWT 签名密钥（用于会话 Cookie） | 是 |
+| MAILBOX_PASSWORD_KEY | 邮箱自定义密码加密密钥（用于管理员面板显示“原密码”；不填则沿用 JWT_TOKEN） | 否（但推荐） |
 | ROOT_ADMIN_TOKEN | Root 覆写令牌（外部 API 调用推荐；不填则回退用 JWT_TOKEN） | 否（但推荐） |
 | PUBLIC_API_KEY | /api/public/* 兼容层的 API Key（给 Userscript/脚本用，走 X-API-Key） | 否 |
 | RESEND_API_KEY | Resend 发件配置 | 否 |

@@ -498,6 +498,13 @@ export const adminMailboxAPI = {
         return { mailboxes };
     },
 
+    // 获取邮箱当前密码（管理员）
+    async getPassword(address) {
+        const normalized = String(address || '').trim().toLowerCase();
+        if (!normalized) throw new Error('邮箱不存在');
+        return request(`/api/mailboxes/password?address=${encodeURIComponent(normalized)}`);
+    },
+
     // 更新邮箱（密码/登录状态）
     async update(id, data) {
         const address = data && data.address ? data.address : adminMailboxCache.get(normalizeId(id));

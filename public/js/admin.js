@@ -1588,18 +1588,65 @@ window.filterByUser = function() {
 
 // 密码修改
 let currentPwdEditId = null;
+let currentPwdEditAddress = '';
 
-window.openPwdModal = function(id, address) {
+window.openPwdModal = async function(id, address) {
     currentPwdEditId = id;
+    currentPwdEditAddress = address;
     document.getElementById('pwdEditEmail').textContent = address;
-    document.getElementById('newPasswordInput').value = '';
-    document.getElementById('newPasswordInput').placeholder = `默认密码: ${address}`;
+
+    const oldPwdInput = document.getElementById('oldPasswordInput');
+    const oldPwdHint = document.getElementById('oldPasswordHint');
+    if (oldPwdInput) oldPwdInput.value = '';
+    if (oldPwdHint) {
+        oldPwdHint.innerHTML = '<i class="ph-fill ph-info"></i> 正在获取原密码...';
+    }
+
+    const newPwdInput = document.getElementById('newPasswordInput');
+    if (newPwdInput) {
+        newPwdInput.value = '';
+        newPwdInput.placeholder = '';
+    }
     openModal('passwordModal');
+
+    try {
+        const res = await adminMailboxAPI.getPassword(address);
+        if (currentPwdEditId !== id) return;
+
+        const password = res?.password ?? '';
+        const isDefault = Boolean(res?.is_default);
+        const recoverable = typeof res?.recoverable === 'boolean' ? res.recoverable : true;
+
+        if (oldPwdInput) oldPwdInput.value = password;
+        if (oldPwdHint) {
+            if (!recoverable && !isDefault) {
+                oldPwdHint.innerHTML = '<i class="ph-fill ph-info"></i> 该邮箱密码已自定义，但旧密码未保存，无法显示。可直接设置新密码。';
+            } else if (isDefault) {
+                oldPwdHint.innerHTML = '<i class="ph-fill ph-info"></i> 当前为默认密码（同邮箱地址）。';
+            } else {
+                oldPwdHint.textContent = '';
+            }
+        }
+    } catch (error) {
+        if (currentPwdEditId !== id) return;
+        if (oldPwdHint) {
+            oldPwdHint.textContent = error?.message || '获取原密码失败';
+        }
+    }
 };
 
 window.closePwdModal = function() {
     closeModal('passwordModal');
     currentPwdEditId = null;
+    currentPwdEditAddress = '';
+};
+
+window.copyOldPassword = function(event) {
+    if (event && typeof event.preventDefault === 'function') event.preventDefault();
+    if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
+    const value = document.getElementById('oldPasswordInput')?.value || '';
+    if (!value) return showToast('暂无可复制的原密码');
+    copyText(value);
 };
 
 window.savePassword = async function() {

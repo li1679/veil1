@@ -582,6 +582,13 @@ async function delegateApiRequest(context) {
   // 3. JSON格式：{"domain1.com": "key1", "domain2.com": "key2"}
   const RESEND_API_KEY = env.RESEND_API_KEY || env.RESEND_TOKEN || env.RESEND || '';
   const ADMIN_NAME = String(env.ADMIN_NAME || 'admin').trim().toLowerCase();
+  const PASSWORD_ENCRYPTION_KEY =
+    env.MAILBOX_PASSWORD_KEY ||
+    env.MAILBOX_PASSWORD_ENCRYPTION_KEY ||
+    env.PASSWORD_ENCRYPTION_KEY ||
+    env.JWT_TOKEN ||
+    env.JWT_SECRET ||
+    '';
 
   // 邮箱用户只能访问自己的邮箱数据
   if (authPayload.role === 'mailbox') {
@@ -589,6 +596,7 @@ async function delegateApiRequest(context) {
       mockOnly: false, 
       resendApiKey: RESEND_API_KEY, 
       adminName: ADMIN_NAME, 
+      passwordEncryptionKey: PASSWORD_ENCRYPTION_KEY,
       r2: env.MAIL_EML, 
       authPayload,
       mailboxOnly: true
@@ -599,6 +607,7 @@ async function delegateApiRequest(context) {
     mockOnly: false, 
     resendApiKey: RESEND_API_KEY, 
     adminName: ADMIN_NAME, 
+    passwordEncryptionKey: PASSWORD_ENCRYPTION_KEY,
     r2: env.MAIL_EML, 
     authPayload 
   });

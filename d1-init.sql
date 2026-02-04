@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS mailboxes (
   domain TEXT NOT NULL,
   remark TEXT,
   password_hash TEXT,
+  password_enc TEXT,
   created_by_user_id INTEGER,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   last_accessed_at TEXT,

@@ -14,6 +14,7 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
   const MOCK_DOMAINS = ['exa.cc', 'exr.yp', 'duio.ty'];
   const RESEND_API_KEY = options.resendApiKey || '';
   const ADMIN_NAME = String(options.adminName || '').trim().toLowerCase();
+  const PASSWORD_ENCRYPTION_KEY = String(options.passwordEncryptionKey || '').trim();
 
   // 邮箱用户只能访问特定的API端点和自己的数据
   if (isMailboxOnly) {
@@ -203,6 +204,74 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
     let out = '';
     for (let i = 0; i < bytes.length; i++) out += bytes[i].toString(16).padStart(2, '0');
     return out;
+  }
+
+  function bytesToBase64(bytes) {
+    const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+    if (typeof Buffer !== 'undefined') {
+      return Buffer.from(arr).toString('base64');
+    }
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < arr.length; i += chunkSize) {
+      binary += String.fromCharCode(...arr.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
+  }
+
+  function base64ToBytes(b64) {
+    const text = String(b64 || '');
+    if (typeof Buffer !== 'undefined') {
+      return new Uint8Array(Buffer.from(text, 'base64'));
+    }
+    const binary = atob(text);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  async function getMailboxPasswordCryptoKey() {
+    if (!PASSWORD_ENCRYPTION_KEY) return null;
+    if (!globalThis.__MAILBOX_PWD_KEY_CACHE__) globalThis.__MAILBOX_PWD_KEY_CACHE__ = new Map();
+
+    const cache = globalThis.__MAILBOX_PWD_KEY_CACHE__;
+    if (cache.has(PASSWORD_ENCRYPTION_KEY)) return cache.get(PASSWORD_ENCRYPTION_KEY);
+
+    const raw = new TextEncoder().encode(PASSWORD_ENCRYPTION_KEY);
+    const digest = await crypto.subtle.digest('SHA-256', raw);
+    const key = await crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+    cache.set(PASSWORD_ENCRYPTION_KEY, key);
+    return key;
+  }
+
+  async function encryptMailboxPassword(rawPassword) {
+    const password = String(rawPassword || '');
+    if (!password) return null;
+    const key = await getMailboxPasswordCryptoKey();
+    if (!key) return null;
+
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const plaintext = new TextEncoder().encode(password);
+    const ciphertext = new Uint8Array(
+      await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext)
+    );
+    return `v1:${bytesToBase64(iv)}:${bytesToBase64(ciphertext)}`;
+  }
+
+  async function decryptMailboxPassword(encrypted) {
+    const raw = String(encrypted || '');
+    if (!raw) return null;
+    const key = await getMailboxPasswordCryptoKey();
+    if (!key) return null;
+    if (!raw.startsWith('v1:')) return null;
+
+    const parts = raw.split(':');
+    if (parts.length !== 3) return null;
+
+    const iv = base64ToBytes(parts[1]);
+    const data = base64ToBytes(parts[2]);
+    const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+    return new TextDecoder().decode(plainBuf);
   }
 
   function generateHumanNamePrefix(targetLength = 12) {
@@ -1447,6 +1516,78 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
     }
   }
 
+  // 获取某个邮箱当前密码（仅严格管理员）
+  // - 默认密码：同邮箱地址
+  // - 自定义密码：需要配置 MAILBOX_PASSWORD_KEY（或沿用 JWT_TOKEN）才可解密显示
+  if (path === '/api/mailboxes/password' && request.method === 'GET') {
+    if (isMock) return Response.json({ success: true, password: null, is_default: true, recoverable: true, mock: true });
+    if (!isStrictAdmin()) return new Response('Forbidden', { status: 403 });
+
+    try {
+      const address = String(url.searchParams.get('address') || '').trim().toLowerCase();
+      if (!address) return new Response('缺少 address 参数', { status: 400 });
+
+      const { results } = await db.prepare(
+        'SELECT address, password_hash, password_enc FROM mailboxes WHERE address = ? LIMIT 1'
+      ).bind(address).all();
+      if (!results || results.length === 0) {
+        return new Response('邮箱不存在', { status: 404 });
+      }
+
+      const row = results[0];
+      const isDefault = !row.password_hash;
+      if (isDefault) {
+        return Response.json({
+          success: true,
+          address: row.address,
+          password: row.address,
+          is_default: true,
+          recoverable: true,
+        });
+      }
+
+      if (!PASSWORD_ENCRYPTION_KEY || !row.password_enc) {
+        return Response.json({
+          success: true,
+          address: row.address,
+          password: null,
+          is_default: false,
+          recoverable: false,
+        });
+      }
+
+      try {
+        const password = await decryptMailboxPassword(row.password_enc);
+        if (!password) {
+          return Response.json({
+            success: true,
+            address: row.address,
+            password: null,
+            is_default: false,
+            recoverable: false,
+          });
+        }
+        return Response.json({
+          success: true,
+          address: row.address,
+          password,
+          is_default: false,
+          recoverable: true,
+        });
+      } catch (_) {
+        return Response.json({
+          success: true,
+          address: row.address,
+          password: null,
+          is_default: false,
+          recoverable: false,
+        });
+      }
+    } catch (e) {
+      return new Response('操作失败: ' + e.message, { status: 500 });
+    }
+  }
+
   // 重置某个邮箱的密码为默认（邮箱本身）——仅严格管理员
   if (path === '/api/mailboxes/reset-password' && request.method === 'POST') {
     if (isMock) return Response.json({ success: true, mock: true });
@@ -1454,7 +1595,7 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
       if (!isStrictAdmin()) return new Response('Forbidden', { status: 403 });
       const address = String(url.searchParams.get('address') || '').trim().toLowerCase();
       if (!address) return new Response('缺少 address 参数', { status: 400 });
-      await db.prepare('UPDATE mailboxes SET password_hash = NULL WHERE address = ?').bind(address).run();
+      await db.prepare('UPDATE mailboxes SET password_hash = NULL, password_enc = NULL WHERE address = ?').bind(address).run();
       return Response.json({ success: true });
     }catch(e){ return new Response('重置失败', { status: 500 }); }
   }
@@ -1548,10 +1689,11 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
       
       // 生成密码哈希
       const newPasswordHash = await sha256Hex(newPassword);
+      const newPasswordEnc = await encryptMailboxPassword(newPassword);
       
       // 更新密码
-      await db.prepare('UPDATE mailboxes SET password_hash = ? WHERE address = ?')
-        .bind(newPasswordHash, address).run();
+      await db.prepare('UPDATE mailboxes SET password_hash = ?, password_enc = ? WHERE address = ?')
+        .bind(newPasswordHash, newPasswordEnc, address).run();
       
       return Response.json({ success: true });
     } catch (e) {
@@ -1955,10 +2097,11 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
       // 生成新密码哈希
       const { hashPassword } = await import('./authentication.js');
       const newPasswordHash = await hashPassword(newPassword);
+      const newPasswordEnc = await encryptMailboxPassword(newPassword);
       
       // 更新密码
-      await db.prepare('UPDATE mailboxes SET password_hash = ? WHERE id = ?')
-        .bind(newPasswordHash, mailboxId).run();
+      await db.prepare('UPDATE mailboxes SET password_hash = ?, password_enc = ? WHERE id = ?')
+        .bind(newPasswordHash, newPasswordEnc, mailboxId).run();
       
       return Response.json({ success: true, message: '密码修改成功' });
       
