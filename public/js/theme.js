@@ -4,6 +4,8 @@
  */
 
 const THEME_KEY = 'veil_theme';
+const THEME_META_LIGHT = '#F2F2F7';
+const THEME_META_DARK = '#000000';
 
 function getStoredTheme() {
     try {
@@ -22,12 +24,19 @@ function storeTheme(theme) {
 }
 
 export function applyTheme(theme, save = true) {
-    if (theme === 'dark') {
+    const normalized = theme === 'dark' ? 'dark' : 'light';
+
+    if (normalized === 'dark') {
         document.documentElement.setAttribute('data-theme', 'dark');
     } else {
         document.documentElement.removeAttribute('data-theme');
     }
-    if (save) storeTheme(theme);
+
+    updateThemeMeta(normalized);
+    updateColorScheme(normalized);
+    emitThemeChange(normalized);
+
+    if (save) storeTheme(normalized);
 }
 
 export function toggleTheme() {
@@ -61,6 +70,27 @@ export function initTheme() {
         media.addEventListener('change', onChange);
     } else if (typeof media.addListener === 'function') {
         media.addListener(onChange);
+    }
+}
+
+function updateThemeMeta(theme) {
+    if (typeof document === 'undefined') return;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) return;
+    meta.setAttribute('content', theme === 'dark' ? THEME_META_DARK : THEME_META_LIGHT);
+}
+
+function updateColorScheme(theme) {
+    if (typeof document === 'undefined') return;
+    document.documentElement.style.colorScheme = theme === 'dark' ? 'dark' : 'light';
+}
+
+function emitThemeChange(theme) {
+    if (typeof window === 'undefined') return;
+    try {
+        window.dispatchEvent(new CustomEvent('veil:themechange', { detail: { theme } }));
+    } catch (_) {
+        // ignore
     }
 }
 

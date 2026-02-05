@@ -18,6 +18,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            transition: background-color 0.3s ease;
         }
         .loading-container {
             text-align: center;
@@ -38,9 +39,19 @@
             color: #3C3C4399;
             font-size: 14px;
         }
+        [data-theme='dark'] body {
+            background: #000000;
+        }
+        [data-theme='dark'] .spinner {
+            border-color: #2C2C2E;
+            border-top-color: #0A84FF;
+        }
+        [data-theme='dark'] .loading-text {
+            color: #EBEBF599;
+        }
     </style>
     <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#007AFF">
+    <meta name="theme-color" content="#F2F2F7">
     <meta name="color-scheme" content="light dark">
     <script type="module" src="/js/theme.js"></script>
 </head>

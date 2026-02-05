@@ -14,7 +14,7 @@
         }
     </style>
     <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#007AFF">
+    <meta name="theme-color" content="#F2F2F7">
     <meta name="color-scheme" content="light dark">
     <script type="module" src="/js/theme.js"></script>
 </head>
@@ -70,15 +70,15 @@
                         <div class="custom-select-wrapper" id="domainSelectWrapper">
                             <div class="select-trigger" id="domainSelectTrigger" role="button" tabindex="0" aria-label="选择域名后缀" aria-haspopup="listbox" aria-expanded="false" onclick="toggleDropdown()">
                                 <span id="selectedDomain">加载中...</span>
-                                <i class="ph-bold ph-caret-down" style="color:#86868B;"></i>
+                                <i class="ph-bold ph-caret-down caret-muted"></i>
                             </div>
                             <ul class="options-list" id="domainOptions"></ul>
                         </div>
 
-                        <div class="form-row" style="display:flex; justify-content:space-between; align-items:center; background:#F9F9F9; padding:12px; border-radius:8px; margin-bottom:20px;">
+                        <div class="form-row setting-row setting-row-spaced">
                             <div>
                                 <div style="font-size:14px; font-weight:500;">随机域名后缀</div>
-                                <div style="font-size:12px; color:#3C3C4399;">开启后每次生成都会随机选择域名</div>
+                                <div class="muted-caption">开启后每次生成都会随机选择域名</div>
                             </div>
                             <div class="ios-switch" id="randomDomainSwitch" role="button" tabindex="0" aria-label="切换随机域名后缀" onclick="toggleRandomDomain()">
                                 <div class="ios-switch-thumb"></div>

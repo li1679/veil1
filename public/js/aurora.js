@@ -10,6 +10,10 @@ let height = 0;
 let blobs = [];
 let animationFrameId = null;
 
+function isDarkTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'dark';
+}
+
 class Blob {
     constructor() {
         this.init();
@@ -21,10 +25,14 @@ class Blob {
         this.vx = (Math.random() - 0.5) * 0.2;
         this.vy = (Math.random() - 0.5) * 0.2;
         this.radius = Math.min(width, height) * (0.5 + Math.random() * 0.3);
-        const colors = ['#60A5FA', '#3B82F6', '#0EA5E9', '#2DD4BF', '#A5F3FC'];
+        const colors = isDarkTheme()
+            ? ['#0A84FF', '#64D2FF', '#5E5CE6', '#30D158', '#BF5AF2']
+            : ['#60A5FA', '#3B82F6', '#0EA5E9', '#2DD4BF', '#A5F3FC'];
         this.color = colors[Math.floor(Math.random() * colors.length)];
         this.alpha = 0;
-        this.targetAlpha = 0.4 + Math.random() * 0.2;
+        this.targetAlpha = isDarkTheme()
+            ? 0.22 + Math.random() * 0.16
+            : 0.4 + Math.random() * 0.2;
 
         this._gradient = null;
         this._gradientX = null;
@@ -96,9 +104,10 @@ function initCanvas() {
 function animate() {
     if (document.body.classList.contains('app-mode')) return;
 
-    ctx.fillStyle = '#F5F5F7';
+    const dark = isDarkTheme();
+    ctx.fillStyle = dark ? '#040406' : '#F5F5F7';
     ctx.fillRect(0, 0, width, height);
-    ctx.globalCompositeOperation = 'hard-light';
+    ctx.globalCompositeOperation = dark ? 'screen' : 'hard-light';
     blobs.forEach(blob => {
         blob.update();
         blob.draw();
@@ -116,6 +125,7 @@ export function startAurora(canvasId = 'aurora-canvas') {
     animate();
 
     window.addEventListener('resize', initCanvas);
+    window.addEventListener('veil:themechange', initCanvas);
 }
 
 

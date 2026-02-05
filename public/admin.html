@@ -4,12 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Veil - 管理控制台</title>
+    <meta name="theme-color" content="#F2F2F7">
+    <meta name="color-scheme" content="light dark">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link rel="stylesheet" href="/css/styles.css">
     <style>
         /* 防止加载时黑屏 */
-        body.app-mode { background-color: #EEF0F2; }
+        body.app-mode { background-color: var(--ios-bg); }
     </style>
 </head>
 <body class="app-mode">
@@ -41,20 +43,21 @@
 
                 <div class="user-profile-container">
                     <div class="user-menu" id="userMenu">
-                        <div class="menu-item" id="themeToggleItem" role="button" tabindex="0" aria-label="切换暗黑模式" style="color: var(--label-primary);">
+                        <div class="menu-item" id="themeToggleItem" role="button" tabindex="0" aria-label="切换暗黑模式">
                             <div style="flex:1; display:flex; gap:8px; align-items:center;">
-                                <i class="ph-bold ph-moon"></i> 暗黑模式
+                                <i class="ph-bold ph-moon" id="themeMenuIcon"></i>
+                                <span id="themeLabel">暗黑模式</span>
                             </div>
                             <div class="ios-switch" id="themeSwitch"><div class="ios-switch-thumb"></div></div>
                         </div>
-                        <div class="menu-item" id="logoutMenuItem" role="button" tabindex="0" aria-label="退出登录">
+                        <div class="menu-item danger" id="logoutMenuItem" role="button" tabindex="0" aria-label="退出登录">
                             <i class="ph-bold ph-sign-out"></i> 退出登录
                         </div>
                     </div>
                     <div class="user-profile" role="button" tabindex="0" aria-label="打开用户菜单">
                         <div class="avatar">A</div>
                         <div style="flex:1;">
-                            <div class="name-text" style="font-size:14px; font-weight:600; color:#1c1c1e;">Super Admin</div>
+                            <div class="name-text" style="font-size:14px; font-weight:600;">Super Admin</div>
                             <span class="badge-admin">Super Admin</span>
                         </div>
                     </div>
@@ -75,7 +78,7 @@
                         <div class="brand-text" style="font-size: 17px;">Veil</div>
                     </div>
                     <button class="mobile-header-action" type="button" onclick="document.getElementById('themeToggleItem')?.click()" aria-label="切换暗黑模式">
-                        <i class="ph ph-moon"></i>
+                        <i class="ph ph-moon" id="themeMobileIcon"></i>
                     </button>
                 </div>
 
@@ -111,15 +114,15 @@
                                     <div class="custom-select-wrapper" id="domainSelectWrapper">
                                         <div class="select-trigger" id="domainSelectTrigger" role="button" tabindex="0" aria-label="选择域名后缀" aria-haspopup="listbox" aria-expanded="false" onclick="toggleDropdown()">
                                             <span id="selectedDomain">加载中...</span>
-                                            <i class="ph-bold ph-caret-down" style="color:#86868B;"></i>
+                                            <i class="ph-bold ph-caret-down caret-muted"></i>
                                         </div>
                                         <ul class="options-list" id="domainOptions"></ul>
                                     </div>
 
-                                    <div class="form-row" style="display:flex; justify-content:space-between; align-items:center; background:#F9F9F9; padding:12px; border-radius:8px; margin-bottom:20px;">
+                                    <div class="form-row setting-row setting-row-spaced">
                                         <div>
                                             <div style="font-size:14px; font-weight:500;">随机域名后缀</div>
-                                            <div style="font-size:12px; color:#3C3C4399;">开启后每次生成都会随机选择域名</div>
+                                            <div class="muted-caption">开启后每次生成都会随机选择域名</div>
                                         </div>
                                         <div class="ios-switch" id="randomDomainSwitch" role="button" tabindex="0" aria-label="切换随机域名后缀" onclick="toggleRandomDomain()">
                                             <div class="ios-switch-thumb"></div>
@@ -184,7 +187,7 @@
                         <div class="header">
                             <div>
                                 <div class="title">用户管理</div>
-                                <div style="font-size:14px; color:#3C3C4399; margin-top:4px;">管理用户权限、邮箱配额及发件设置</div>
+                                <div class="section-subtitle">管理用户权限、邮箱配额及发件设置</div>
                             </div>
                             <div class="actions">
                                 <button class="btn btn-primary" onclick="openUserModal()"><i class="ph-bold ph-plus"></i> 新增用户</button>
@@ -376,10 +379,10 @@
                 </div>
             </div>
 
-            <div class="form-row" style="display:flex; justify-content:space-between; align-items:center; background:#F9F9F9; padding:12px; border-radius:8px;">
+            <div class="form-row setting-row">
                 <div>
                     <div style="font-size:14px; font-weight:500;">允许发送邮件</div>
-                    <div style="font-size:12px; color:#3C3C4399;">开启后该用户可发送邮件</div>
+                    <div class="muted-caption">开启后该用户可发送邮件</div>
                 </div>
                 <div class="ios-switch" id="inputSendSwitch" onclick="this.classList.toggle('on')">
                     <div class="ios-switch-thumb"></div>
