@@ -174,10 +174,11 @@ function closeMobileSidebarIfOpen() {
     }
 }
 
-window.switchView = function(viewName, navEl) {
-    // 更新导航状态
-    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-    if (navEl) navEl.classList.add('active');
+window.switchView = function(viewName) {
+    // 更新导航状态（侧边栏 + 底部导航同步）
+    document.querySelectorAll('.nav-item, .tab-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.view === viewName);
+    });
 
     // 切换视图
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));

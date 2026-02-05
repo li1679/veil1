@@ -238,18 +238,18 @@ export const mailboxAPI = {
     },
 
     // 生成随机邮箱
-    async generate(domain, prefixMode = 'random', length = 12) {
+    async generate(domain, prefixMode = 'random', length = 12, expiry = '24h') {
         return request('/api/generate', {
             method: 'POST',
-            body: JSON.stringify({ domain, prefix_mode: prefixMode, length }),
+            body: JSON.stringify({ domain, prefix_mode: prefixMode, length, expiry }),
         });
     },
 
     // 创建自定义邮箱
-    async create(prefix, domain) {
+    async create(prefix, domain, expiry = '24h') {
         return request('/api/create', {
             method: 'POST',
-            body: JSON.stringify({ prefix, domain }),
+            body: JSON.stringify({ prefix, domain, expiry }),
         });
     },
 

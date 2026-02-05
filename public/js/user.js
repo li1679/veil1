@@ -30,6 +30,7 @@ let prefixMode = 'random';
 let selectedDomain = '';
 let prefixLength = 12;
 let randomDomainSuffix = false;
+let selectedExpiry = '24h';
 
 // 轮询
 let inboxPollInterval = null;
@@ -176,9 +177,10 @@ window.toggleRandomDomain = function() {
 // ============================================
 window.setPrefixMode = function(btn, mode, index) {
     prefixMode = mode;
-    document.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('active'));
+    const container = btn.parentElement;
+    container.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    document.getElementById('segmentBg').style.transform = `translateX(${index * 100}%)`;
+    container.querySelector('.segment-bg').style.transform = `translateX(${index * 100}%)`;
 
     const customInput = document.getElementById('customInputBox');
     const lengthSection = document.getElementById('lengthSection');
@@ -191,6 +193,14 @@ window.setPrefixMode = function(btn, mode, index) {
         customInput.style.display = 'none';
         lengthSection.style.display = 'block';
     }
+};
+
+window.setExpiry = function(btn, value, index) {
+    selectedExpiry = value;
+    const container = btn.parentElement;
+    container.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    container.querySelector('.segment-bg').style.transform = `translateX(${index * 100}%)`;
 };
 
 window.updateLengthLabel = function(val) {
@@ -219,9 +229,9 @@ window.generateEmail = async function() {
                 showToast('请输入前缀');
                 return;
             }
-            response = await mailboxAPI.create(prefix, domain);
+            response = await mailboxAPI.create(prefix, domain, selectedExpiry);
         } else {
-            response = await mailboxAPI.generate(domain, prefixMode, prefixLength);
+            response = await mailboxAPI.generate(domain, prefixMode, prefixLength, selectedExpiry);
         }
 
         if (response && response.address) {

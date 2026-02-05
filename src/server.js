@@ -1,4 +1,4 @@
-﻿import { initDatabase } from './database.js';
+﻿import { initDatabase, getMailboxIdForReceive } from './database.js';
 import { handleEmailReceive } from './apiHandlers.js';
 import { extractEmail } from './commonUtils.js';
 import { forwardByLocalPart } from './emailForwarder.js';
@@ -6,6 +6,7 @@ import { parseEmailBody, extractVerificationCode } from './emailParser.js';
 import { createRouter, authMiddleware, resolveAuthPayload } from './routes.js';
 import { createAssetManager } from './assetManager.js';
 import { getDatabaseWithValidation } from './dbConnectionHelper.js';
+import { ttlCleanup } from './ttlCleanup.js';
 
 
 export default {
@@ -152,20 +153,19 @@ export default {
       } catch (_) {}
 
       // 写入新表结构（仅主要信息 + R2 引用）
-      const resMb = await DB.prepare('SELECT id FROM mailboxes WHERE address = ?').bind(mailbox.toLowerCase()).all();
-      let mailboxId;
-      if (Array.isArray(resMb?.results) && resMb.results.length) {
-        mailboxId = resMb.results[0].id;
-      } else {
-        const [localPart, domain] = (mailbox || '').toLowerCase().split('@');
-        if (localPart && domain) {
-        await DB.prepare('INSERT INTO mailboxes (address, local_part, domain, password_hash, last_accessed_at) VALUES (?, ?, ?, NULL, CURRENT_TIMESTAMP)')
-          .bind((mailbox || '').toLowerCase(), localPart, domain).run();
-          const created = await DB.prepare('SELECT id FROM mailboxes WHERE address = ?').bind((mailbox || '').toLowerCase()).all();
-          mailboxId = created?.results?.[0]?.id;
-        }
+      const softTtlRaw = env?.SOFT_TTL_AUTO_HOURS;
+      const softTtlHours = (() => {
+        const n = Number(softTtlRaw);
+        if (!Number.isFinite(n) || n <= 0) return 24;
+        return n;
+      })();
+      const mailboxId = await getMailboxIdForReceive(DB, mailbox, { ttlHours: softTtlHours });
+      if (!mailboxId) {
+        try {
+          if (typeof message?.setReject === 'function') message.setReject('Mailbox expired');
+        } catch (_) {}
+        return;
       }
-      if (!mailboxId) throw new Error('无法解析或创建 mailbox 记录');
 
       // 收件人（逗号拼接）
       let toAddrs = '';
@@ -199,6 +199,31 @@ export default {
     } catch (err) {
       console.error('Email event handling error:', err);
     }
+  },
+
+  /**
+   * 定时任务处理器，由 Cron 触发执行过期数据清理
+   * @param {object} event - 定时事件对象
+   * @param {object} env - 环境变量对象
+   * @param {object} ctx - 上下文对象
+   */
+  async scheduled(event, env, ctx) {
+    let DB;
+    try {
+      DB = await getDatabaseWithValidation(env);
+    } catch (error) {
+      console.error('定时任务数据库连接失败:', error.message);
+      return;
+    }
+
+    const options = {
+      maxRuntimeMs: Number(env.CLEANUP_MAX_RUNTIME_MS) || 25000,
+      mailboxBatchSize: Number(env.CLEANUP_MAILBOX_BATCH_SIZE) || 50,
+      messageBatchSize: Number(env.CLEANUP_MESSAGE_BATCH_SIZE) || 200
+    };
+
+    const stats = await ttlCleanup(DB, env.MAIL_EML, options);
+    console.log('TTL Cleanup completed:', JSON.stringify(stats));
   }
 };
 

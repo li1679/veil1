@@ -296,10 +296,11 @@ export async function setupDatabase(db) {
  */
 export async function getOrCreateMailboxId(db, address, options = {}) {
   const { getCachedMailboxId, updateMailboxIdCache } = await import('./cacheHelper.js');
-  
+
   const normalized = String(address || '').trim().toLowerCase();
   if (!normalized) throw new Error('无效的邮箱地址');
   const createdByUserId = Number(options?.createdByUserId || 0);
+  const normalizedExpiresAt = normalizeOptionalD1Timestamp(options?.expiresAt);
   
   // 先检查缓存
   const cachedId = await getCachedMailboxId(db, normalized);
@@ -331,8 +332,8 @@ export async function getOrCreateMailboxId(db, address, options = {}) {
   
   // 创建新邮箱
   await db.prepare(
-    'INSERT INTO mailboxes (address, local_part, domain, password_hash, created_by_user_id, last_accessed_at) VALUES (?, ?, ?, NULL, ?, CURRENT_TIMESTAMP)'
-  ).bind(normalized, local_part, domain, createdByUserId || null).run();
+    'INSERT INTO mailboxes (address, local_part, domain, password_hash, created_by_user_id, last_accessed_at, expires_at) VALUES (?, ?, ?, NULL, ?, CURRENT_TIMESTAMP, ?)'
+  ).bind(normalized, local_part, domain, createdByUserId || null, normalizedExpiresAt).run();
   
   // 查询新创建的ID
   const created = await db.prepare('SELECT id FROM mailboxes WHERE address = ? LIMIT 1').bind(normalized).all();
@@ -345,6 +346,89 @@ export async function getOrCreateMailboxId(db, address, options = {}) {
   const { invalidateSystemStatCache } = await import('./cacheHelper.js');
   invalidateSystemStatCache('total_mailboxes');
   
+  return newId;
+}
+
+function normalizeOptionalD1Timestamp(value) {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 19).replace('T', ' ');
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return new Date(value).toISOString().slice(0, 19).replace('T', ' ');
+  }
+  const s = String(value || '').trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) return s;
+  const ms = Date.parse(s);
+  if (!Number.isNaN(ms)) {
+    return new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+  }
+  return s;
+}
+
+/**
+ * 邮件接收场景：获取邮箱ID（若不存在则按 Soft-TTL 自动创建）
+ * @param {object} db - 数据库连接对象
+ * @param {string} address - 邮箱地址
+ * @param {object} opts - 选项
+ * @param {number} opts.ttlHours - 自动创建邮箱的 TTL（小时），默认 24
+ * @returns {Promise<number|null>} mailboxId 或 null
+ */
+export async function getMailboxIdForReceive(db, address, { ttlHours = 24 } = {}) {
+  const { updateMailboxIdCache, invalidateSystemStatCache } = await import('./cacheHelper.js');
+
+  const normalized = String(address || '').trim().toLowerCase();
+  if (!normalized) return null;
+
+  let local_part = '';
+  let domain = '';
+  const at = normalized.indexOf('@');
+  if (at > 0 && at < normalized.length - 1) {
+    local_part = normalized.slice(0, at);
+    domain = normalized.slice(at + 1);
+  }
+  if (!local_part || !domain) return null;
+
+  const active = await db.prepare(
+    'SELECT id FROM mailboxes WHERE address = ? AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP) LIMIT 1'
+  ).bind(normalized).all();
+  if (active.results && active.results.length > 0) {
+    const id = active.results[0].id;
+    updateMailboxIdCache(normalized, id);
+    db.prepare('UPDATE mailboxes SET last_accessed_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .bind(id).run().catch(() => {});
+    return id;
+  }
+
+  const any = await db.prepare('SELECT id FROM mailboxes WHERE address = ? LIMIT 1').bind(normalized).all();
+  if (any.results && any.results.length > 0) {
+    return null;
+  }
+
+  const hours = Number(ttlHours);
+  const safeHours = (Number.isFinite(hours) && hours > 0) ? hours : 24;
+  const expiresAt = normalizeOptionalD1Timestamp(Date.now() + safeHours * 60 * 60 * 1000);
+
+  try {
+    await db.prepare(
+      'INSERT INTO mailboxes (address, local_part, domain, password_hash, created_by_user_id, last_accessed_at, expires_at) VALUES (?, ?, ?, NULL, NULL, CURRENT_TIMESTAMP, ?)'
+    ).bind(normalized, local_part, domain, expiresAt).run();
+  } catch (e) {
+    const msg = String(e?.message || e).toLowerCase();
+    if (!msg.includes('unique') && !msg.includes('constraint')) {
+      throw e;
+    }
+  }
+
+  const created = await db.prepare(
+    'SELECT id FROM mailboxes WHERE address = ? AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP) LIMIT 1'
+  ).bind(normalized).all();
+  const newId = created?.results?.[0]?.id || null;
+  if (newId) {
+    updateMailboxIdCache(normalized, newId);
+    invalidateSystemStatCache('total_mailboxes');
+  }
   return newId;
 }
 
@@ -674,7 +758,7 @@ export async function listUsersWithCounts(db, { limit = 50, offset = 0, sort = '
  * @returns {Promise<object>} 分配结果对象
  * @throws {Error} 当邮箱地址无效、用户不存在或达到邮箱上限时抛出异常
  */
-export async function assignMailboxToUser(db, { userId = null, username = null, address }){
+export async function assignMailboxToUser(db, { userId = null, username = null, address, expiresAt }){
   const { getCachedUserQuota, invalidateUserQuotaCache } = await import('./cacheHelper.js');
   
   const normalized = String(address || '').trim().toLowerCase();
@@ -695,7 +779,7 @@ export async function assignMailboxToUser(db, { userId = null, username = null, 
   if (quota.used >= quota.limit) throw new Error('已达到邮箱上限');
 
   // 查询或创建邮箱（并记录创建者）
-  const mailboxId = await getOrCreateMailboxId(db, normalized, { createdByUserId: uid });
+  const mailboxId = await getOrCreateMailboxId(db, normalized, { createdByUserId: uid, expiresAt });
 
   // 绑定（唯一约束避免重复）
   await db.prepare('INSERT OR IGNORE INTO user_mailboxes (user_id, mailbox_id) VALUES (?, ?)').bind(uid, mailboxId).run();

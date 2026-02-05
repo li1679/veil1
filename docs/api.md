@@ -10,7 +10,7 @@
 
 - Base URL：`https://<你的域名>`
 - 业务接口前缀：`/api/*`
-- 邮件注入回调（可选）：`POST /receive`
+- 邮件注入回调（可选，可用 `RECEIVE_TOKEN` 保护）：`POST /receive`
 
 ---
 
@@ -125,6 +125,23 @@ curl -X POST \
 
 请求体：`{ "username": "...", "password": "..." }`
 
+**Turnstile 人机验证（可选）**：
+
+- 当 Workers Secret 配置 `TURNSTILE_SECRET_KEY` 后，本接口会**强制**校验 Turnstile token（失败返回 `403`，纯文本）。
+- token 传递方式（任选其一）：
+  - JSON 字段：`cf-turnstile-response`（官方字段）/ `turnstileToken` / `captcha`
+  - Header：`CF-Turnstile-Response` / `X-Turnstile-Token`
+
+示例（Header 传 token）：
+
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "CF-Turnstile-Response: <TURNSTILE_TOKEN>" \
+  -d '{"username":"admin","password":"<ADMIN_PASSWORD>"}' \
+  https://your.domain/api/login
+```
+
 支持 3 种登录路径：
 
 - 管理员：`username == ADMIN_NAME` 且 `password == ADMIN_PASSWORD`
@@ -175,7 +192,7 @@ curl -X POST \
 { "address": "xxxx@domain.com", "expires": 1700000000000 }
 ```
 
-> `expires` 目前为前端展示用途（1 小时），不代表服务端自动删除。
+> `expires` 仍为前端展示用途（1 小时）。真正的到期删除取决于 `mailboxes.expires_at`（例如 `/api/public/batch-create-emails` 的 `expiryDays`，以及收件 Soft-TTL 自动创建）。
 
 #### `POST /api/create`（自定义前缀）
 
@@ -405,3 +422,67 @@ curl -X POST \
 #### `GET /api/send/:id` / `PATCH /api/send/:id` / `POST /api/send/:id/cancel`
 
 用于查询/更新/取消 Resend 侧的邮件发送记录。
+
+---
+
+## 5) 邮件注入回调（`POST /receive`）
+
+用于把外部系统的邮件内容"推"进 Veil（可选；如果你走 Cloudflare Email Routing 的 `email` 事件则不需要此接口）。
+
+### 鉴权（可选，但强烈建议）
+
+- 若设置 `RECEIVE_TOKEN`，需满足以下任一方式：
+  - `Authorization: Bearer <RECEIVE_TOKEN>`
+  - `X-Receive-Token: <RECEIVE_TOKEN>`
+- 未设置 `RECEIVE_TOKEN`：不做鉴权（任何人都可以调用）
+
+### 请求体
+
+`application/json`：
+
+```json
+{
+  "to": "a@your.domain",
+  "from": "b@example.com",
+  "subject": "Hi",
+  "text": "plain text",
+  "html": "<p>html</p>"
+}
+```
+
+说明：
+
+- `to`：必填，收件人地址（系统会从中提取邮箱地址并写入对应收件箱）
+- `from` / `subject` / `text` / `html`：可选；未提供时会使用默认值/空字符串
+
+### 响应
+
+成功：`{ "success": true }`
+
+常见错误：
+
+- `401 Unauthorized`：配置了 `RECEIVE_TOKEN` 但未通过校验
+- `500`：处理失败（可能为无效 `to`、数据库/R2 异常等）
+
+---
+
+## 6) 过期策略与 Soft-TTL
+
+### A. `expires_at`（到期删除）+ Cron 清理
+
+- 仅当 `mailboxes.expires_at` 不为空且 <= 当前时间时，清理任务才会删除该邮箱（同时删除消息记录与 R2 EML）。
+- Cron 由 `wrangler.toml` 的 `[triggers].crons` 配置；默认 `0 */6 * * *`（每 6 小时）。
+- 清理逻辑：Worker `scheduled` -> `src/ttlCleanup.js`。
+- 可选运行参数：
+  - `CLEANUP_MAX_RUNTIME_MS`（默认 25000）
+  - `CLEANUP_MAILBOX_BATCH_SIZE`（默认 50）
+  - `CLEANUP_MESSAGE_BATCH_SIZE`（默认 200）
+
+### B. Soft-TTL 自动创建（收件兜底）
+
+- 场景：邮件到达时邮箱尚不存在。
+- 行为：Email Routing 的 `email` 事件会尝试自动创建邮箱，并设置 `expires_at = now + SOFT_TTL_AUTO_HOURS`（默认 24 小时）。
+- 若该邮箱曾存在但已过期：会拒收/丢弃该邮件（防止"过期邮箱被再次激活"）。
+- 配置：`SOFT_TTL_AUTO_HOURS`（小时，>0 才生效）
+
+> 备注：`POST /receive` 走的是 `getOrCreateMailboxId`，默认不会写 `expires_at`；因此更应通过 `RECEIVE_TOKEN` 做访问控制。

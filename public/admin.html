@@ -29,13 +29,13 @@
                 </div>
 
                 <ul class="nav-menu">
-                    <li class="nav-item active" onclick="switchView('home', this)">
+                    <li class="nav-item active" data-view="home" onclick="switchView('home')">
                         <i class="ph ph-plus-circle" style="font-size: 18px;"></i> 生成邮箱
                     </li>
-                    <li class="nav-item" onclick="switchView('users', this)">
+                    <li class="nav-item" data-view="users" onclick="switchView('users')">
                         <i class="ph ph-users" style="font-size: 18px;"></i> 用户管理
                     </li>
-                    <li class="nav-item" onclick="switchView('all-emails', this)">
+                    <li class="nav-item" data-view="all-emails" onclick="switchView('all-emails')">
                         <i class="ph ph-list" style="font-size: 18px;"></i> 所有邮箱
                     </li>
                 </ul>
@@ -477,6 +477,22 @@
     </div>
 
     <script type="module" src="/js/admin.js"></script>
+
+    <!-- 移动端底部导航 -->
+    <nav class="mobile-tab-bar">
+        <button type="button" class="tab-item active" data-view="home" onclick="switchView('home')">
+            <i class="ph ph-plus-circle"></i>
+            <span>生成</span>
+        </button>
+        <button type="button" class="tab-item" data-view="users" onclick="switchView('users')">
+            <i class="ph ph-users"></i>
+            <span>用户</span>
+        </button>
+        <button type="button" class="tab-item" data-view="all-emails" onclick="switchView('all-emails')">
+            <i class="ph ph-list"></i>
+            <span>邮箱</span>
+        </button>
+    </nav>
 
     <style>
         /* 移动端显示头部 */

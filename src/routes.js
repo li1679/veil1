@@ -3,6 +3,7 @@ import { createJwt, verifyJwt, buildSessionCookie, verifyMailboxLogin } from './
 import { extractEmail } from './commonUtils.js';
 import { getTotalMailboxCount } from './database.js';
 import { getDatabaseWithValidation } from './dbConnectionHelper.js';
+import { extractTurnstileToken, verifyTurnstileToken, getClientIP } from './turnstile.js';
 
 /**
  * 路由处理器类，用于管理所有API路由
@@ -331,6 +332,24 @@ export function createRouter() {
   // =================== 认证相关路由 ===================
   router.post('/api/login', async (context) => {
     const { request, env } = context;
+
+    // Turnstile 人机验证（可选）
+    const TURNSTILE_SECRET = env.TURNSTILE_SECRET_KEY || '';
+    if (TURNSTILE_SECRET) {
+      let body;
+      try {
+        body = await request.clone().json();
+      } catch (_) {
+        body = {};
+      }
+      const token = extractTurnstileToken(request, body);
+      const ip = getClientIP(request);
+      const verification = await verifyTurnstileToken(TURNSTILE_SECRET, token, ip);
+      if (!verification.success) {
+        return new Response(verification.error || '人机验证失败', { status: 403 });
+      }
+    }
+
     let DB;
     try {
       DB = await getDatabaseWithValidation(env);
@@ -540,7 +559,18 @@ export function createRouter() {
   // =================== 邮件接收路由 ===================
   router.post('/receive', async (context) => {
     const { request, env } = context;
-    
+
+    // RECEIVE_TOKEN 验证（可选）
+    const RECEIVE_TOKEN = env.RECEIVE_TOKEN || '';
+    if (RECEIVE_TOKEN) {
+      const auth = request.headers.get('Authorization') || '';
+      const bearer = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+      const xToken = request.headers.get('X-Receive-Token') || '';
+      if (bearer !== RECEIVE_TOKEN && xToken !== RECEIVE_TOKEN) {
+        return new Response('Unauthorized', { status: 401 });
+      }
+    }
+
     let DB;
     try {
       DB = await getDatabaseWithValidation(env);

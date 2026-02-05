@@ -35,3 +35,7 @@ binding = "MAIL_EML"
 # wrangler.toml (wrangler v3.88.0^) logs
 # [observability.logs]
 # enabled = true
+
+# Cron triggers for scheduled cleanup
+[triggers]
+crons = ["0 */6 * * *"]

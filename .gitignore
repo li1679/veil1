@@ -78,6 +78,7 @@ dist
 # Temporary folders
 tmp/
 temp/
+.tmp/
 
 # Editor directories and files
 .vscode/
@@ -104,3 +105,4 @@ eml
 
 # Local-only assets (do not sync to GitHub)
 新建文件夹/
+.ace-tool/

@@ -14,6 +14,10 @@
             overflow-y: auto;
         }
     </style>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#007AFF">
+    <meta name="color-scheme" content="light dark">
+    <script type="module" src="/js/theme.js"></script>
 </head>
 <body>
     <div class="user-layout">
@@ -76,6 +80,15 @@
                             <div class="ios-switch" id="randomDomainSwitch" onclick="toggleRandomDomain()">
                                 <div class="ios-switch-thumb"></div>
                             </div>
+                        </div>
+
+                        <div style="font-size:13px; margin-bottom:6px; font-weight:500;">有效时长</div>
+                        <div class="segment-container segment-4">
+                            <div class="segment-bg" id="expirySegmentBg"></div>
+                            <button class="segment-btn" onclick="setExpiry(this, '1h', 0)">1小时</button>
+                            <button class="segment-btn active" onclick="setExpiry(this, '24h', 1)">1天</button>
+                            <button class="segment-btn" onclick="setExpiry(this, '3d', 2)">3天</button>
+                            <button class="segment-btn" onclick="setExpiry(this, 'permanent', 3)">永久</button>
                         </div>
 
                         <div style="font-size:13px; margin-bottom:6px; font-weight:500;">前缀模式</div>

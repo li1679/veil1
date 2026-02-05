@@ -18,7 +18,9 @@ export class AssetManager {
       '/user.html',
       '/mailbox',
       '/mailbox.html',
-      '/favicon.svg'
+      '/favicon.svg',
+      '/manifest.json',
+      '/sw.js'
     ]);
 
     // 定义允许的路径前缀

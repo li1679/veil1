@@ -279,6 +279,20 @@ export function initCommon() {
     initIOSAlert();
     initUserMenuClose();
     initMobileSidebar();
+    if (typeof window !== 'undefined' && window.initTheme) {
+        window.initTheme();
+    }
+    initPwa();
+}
+
+function initPwa() {
+    if (typeof window === 'undefined') return;
+    if (!('serviceWorker' in navigator)) return;
+    const host = window.location.hostname;
+    const isLocalhost = host === 'localhost' || host === '127.0.0.1';
+    if (window.location.protocol !== 'https:' && !isLocalhost) return;
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        .catch((e) => console.warn('SW registration failed:', e));
 }
 
 // 供内联 HTML 使用的全局方法
