@@ -66,6 +66,7 @@ async function ensureSchema(db) {
   });
 
   await ensureColumns(db, 'sent_emails', {
+    user_id: 'INTEGER',
     from_name: 'TEXT',
     from_addr: "TEXT NOT NULL DEFAULT ''",
     to_addrs: "TEXT NOT NULL DEFAULT ''",
@@ -130,7 +131,7 @@ async function performFirstTimeSetup(db) {
     await db.exec("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, mailbox_id INTEGER NOT NULL, sender TEXT NOT NULL, to_addrs TEXT NOT NULL DEFAULT '', subject TEXT NOT NULL, verification_code TEXT, preview TEXT, r2_bucket TEXT NOT NULL DEFAULT 'mail-eml', r2_object_key TEXT NOT NULL DEFAULT '', received_at TEXT DEFAULT CURRENT_TIMESTAMP, is_read INTEGER DEFAULT 0, FOREIGN KEY(mailbox_id) REFERENCES mailboxes(id));");
     await db.exec("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password_hash TEXT, role TEXT NOT NULL DEFAULT 'user', can_send INTEGER NOT NULL DEFAULT 0, mailbox_limit INTEGER NOT NULL DEFAULT 10, created_at TEXT DEFAULT CURRENT_TIMESTAMP);");
     await db.exec("CREATE TABLE IF NOT EXISTS user_mailboxes (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, mailbox_id INTEGER NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, is_pinned INTEGER NOT NULL DEFAULT 0, UNIQUE(user_id, mailbox_id), FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE, FOREIGN KEY(mailbox_id) REFERENCES mailboxes(id) ON DELETE CASCADE);");
-    await db.exec("CREATE TABLE IF NOT EXISTS sent_emails (id INTEGER PRIMARY KEY AUTOINCREMENT, resend_id TEXT, from_name TEXT, from_addr TEXT NOT NULL, to_addrs TEXT NOT NULL, subject TEXT NOT NULL, html_content TEXT, text_content TEXT, status TEXT DEFAULT 'queued', scheduled_at TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP);");
+    await db.exec("CREATE TABLE IF NOT EXISTS sent_emails (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, resend_id TEXT, from_name TEXT, from_addr TEXT NOT NULL, to_addrs TEXT NOT NULL, subject TEXT NOT NULL, html_content TEXT, text_content TEXT, status TEXT DEFAULT 'queued', scheduled_at TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP);");
   }
 
   await ensureSchema(db);
@@ -169,8 +170,10 @@ async function performFirstTimeSetup(db) {
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_user_mailboxes_user_pinned ON user_mailboxes(user_id, is_pinned DESC);`);
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_user_mailboxes_composite ON user_mailboxes(user_id, mailbox_id, is_pinned);`);
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_sent_emails_resend_id ON sent_emails(resend_id);`);
+  await db.exec(`CREATE INDEX IF NOT EXISTS idx_sent_emails_user_id ON sent_emails(user_id);`);
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_sent_emails_status_created ON sent_emails(status, created_at DESC);`);
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_sent_emails_from_addr ON sent_emails(from_addr);`);
+  await db.exec(`CREATE INDEX IF NOT EXISTS idx_sent_emails_user_from ON sent_emails(user_id, from_addr, created_at DESC);`);
   
   // 重新启用外键约束
   await db.exec(`PRAGMA foreign_keys = ON;`);
@@ -250,6 +253,7 @@ export async function setupDatabase(db) {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS sent_emails (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
       resend_id TEXT,
       from_name TEXT,
       from_addr TEXT NOT NULL,
@@ -280,8 +284,10 @@ export async function setupDatabase(db) {
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_user_mailboxes_user_pinned ON user_mailboxes(user_id, is_pinned DESC);`);
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_user_mailboxes_composite ON user_mailboxes(user_id, mailbox_id, is_pinned);`);
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_sent_emails_resend_id ON sent_emails(resend_id);`);
+  await db.exec(`CREATE INDEX IF NOT EXISTS idx_sent_emails_user_id ON sent_emails(user_id);`);
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_sent_emails_status_created ON sent_emails(status, created_at DESC);`);
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_sent_emails_from_addr ON sent_emails(from_addr);`);
+  await db.exec(`CREATE INDEX IF NOT EXISTS idx_sent_emails_user_from ON sent_emails(user_id, from_addr, created_at DESC);`);
   
   // 重新启用外键约束
   await db.exec(`PRAGMA foreign_keys = ON;`);
@@ -507,10 +513,8 @@ export async function toggleMailboxPin(db, address, userId) {
   const umRes = await db.prepare('SELECT id, is_pinned FROM user_mailboxes WHERE user_id = ? AND mailbox_id = ? LIMIT 1')
     .bind(uid, mailboxId).all();
   if (!umRes.results || umRes.results.length === 0){
-    // 若尚未存在关联记录（例如严格管理员未分配该邮箱），则创建一条仅用于个人置顶的关联
-    await db.prepare('INSERT INTO user_mailboxes (user_id, mailbox_id, is_pinned) VALUES (?, ?, 1)')
-      .bind(uid, mailboxId).run();
-    return { is_pinned: 1 };
+    // 安全限制：禁止通过 pin 创建新的用户-邮箱关联（防止越权认领）
+    throw new Error('无权操作该邮箱');
   }
 
   const currentPin = umRes.results[0].is_pinned ? 1 : 0;
@@ -524,6 +528,7 @@ export async function toggleMailboxPin(db, address, userId) {
  * 记录发送的邮件信息到数据库
  * @param {object} db - 数据库连接对象
  * @param {object} params - 邮件参数对象
+ * @param {number} params.userId - 发件用户ID
  * @param {string} params.resendId - Resend服务的邮件ID
  * @param {string} params.fromName - 发件人姓名
  * @param {string} params.from - 发件人邮箱地址
@@ -535,12 +540,13 @@ export async function toggleMailboxPin(db, address, userId) {
  * @param {string} params.scheduledAt - 计划发送时间，默认为null
  * @returns {Promise<void>} 记录完成后无返回值
  */
-export async function recordSentEmail(db, { resendId, fromName, from, to, subject, html, text, status = 'queued', scheduledAt = null }){
+export async function recordSentEmail(db, { userId = null, resendId, fromName, from, to, subject, html, text, status = 'queued', scheduledAt = null }){
+  const uid = Number(userId || 0) || null;
   const toAddrs = Array.isArray(to) ? to.join(',') : String(to || '');
   await db.prepare(`
-    INSERT INTO sent_emails (resend_id, from_name, from_addr, to_addrs, subject, html_content, text_content, status, scheduled_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(resendId || null, fromName || null, from, toAddrs, subject, html || null, text || null, status, scheduledAt || null).run();
+    INSERT INTO sent_emails (user_id, resend_id, from_name, from_addr, to_addrs, subject, html_content, text_content, status, scheduled_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(uid, resendId || null, fromName || null, from, toAddrs, subject, html || null, text || null, status, scheduledAt || null).run();
 }
 
 /**
@@ -550,7 +556,7 @@ export async function recordSentEmail(db, { resendId, fromName, from, to, subjec
  * @param {object} fields - 需要更新的字段对象
  * @returns {Promise<void>} 更新完成后无返回值
  */
-export async function updateSentEmail(db, resendId, fields){
+export async function updateSentEmail(db, resendId, fields, userId = null){
   if (!resendId) return;
   const allowed = ['status', 'scheduled_at'];
   const setClauses = [];
@@ -563,8 +569,12 @@ export async function updateSentEmail(db, resendId, fields){
   }
   if (!setClauses.length) return;
   setClauses.push('updated_at = CURRENT_TIMESTAMP');
-  const sql = `UPDATE sent_emails SET ${setClauses.join(', ')} WHERE resend_id = ?`;
+
+  const uid = Number(userId || 0);
+  const userScope = uid ? ' AND (user_id = ? OR user_id IS NULL)' : '';
+  const sql = `UPDATE sent_emails SET ${setClauses.join(', ')} WHERE resend_id = ?${userScope}`;
   values.push(resendId);
+  if (uid) values.push(uid);
   await db.prepare(sql).bind(...values).run();
 }
 
@@ -577,6 +587,7 @@ async function ensureSentEmailsTable(db){
   await db.exec(`
     CREATE TABLE IF NOT EXISTS sent_emails (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
       resend_id TEXT,
       from_name TEXT,
       from_addr TEXT NOT NULL,
@@ -591,8 +602,10 @@ async function ensureSentEmailsTable(db){
     )
   `);
   await db.exec('CREATE INDEX IF NOT EXISTS idx_sent_emails_resend_id ON sent_emails(resend_id)');
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_sent_emails_user_id ON sent_emails(user_id)');
   await db.exec('CREATE INDEX IF NOT EXISTS idx_sent_emails_status_created ON sent_emails(status, created_at DESC)');
   await db.exec('CREATE INDEX IF NOT EXISTS idx_sent_emails_from_addr ON sent_emails(from_addr)');
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_sent_emails_user_from ON sent_emails(user_id, from_addr, created_at DESC)');
 }
 
 // ============== 用户与授权相关 ==============

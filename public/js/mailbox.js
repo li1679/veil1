@@ -210,14 +210,30 @@ window.closeMailDetail = function() {
 // 收件箱轮询
 function startInboxPoll() {
     stopInboxPoll();
-    loadInbox();
-    inboxPollInterval = setInterval(loadInbox, POLL_INTERVAL);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    handleVisibilityChange();
 }
 
 function stopInboxPoll() {
     if (inboxPollInterval) {
         clearInterval(inboxPollInterval);
         inboxPollInterval = null;
+    }
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+}
+
+function handleVisibilityChange() {
+    if (document.hidden) {
+        if (inboxPollInterval) {
+            clearInterval(inboxPollInterval);
+            inboxPollInterval = null;
+        }
+        return;
+    }
+
+    if (!inboxPollInterval && mailboxAddress) {
+        loadInbox();
+        inboxPollInterval = setInterval(loadInbox, POLL_INTERVAL);
     }
 }
 

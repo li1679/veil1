@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS user_mailboxes (
 -- 发送邮件记录表
 CREATE TABLE IF NOT EXISTS sent_emails (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER,
   resend_id TEXT,
   from_name TEXT,
   from_addr TEXT NOT NULL,
@@ -102,6 +103,8 @@ CREATE INDEX IF NOT EXISTS idx_user_mailboxes_composite ON user_mailboxes(user_i
 
 -- sent_emails 索引
 CREATE INDEX IF NOT EXISTS idx_sent_emails_resend_id ON sent_emails(resend_id);
+CREATE INDEX IF NOT EXISTS idx_sent_emails_user_id ON sent_emails(user_id);
 CREATE INDEX IF NOT EXISTS idx_sent_emails_status_created ON sent_emails(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sent_emails_from_addr ON sent_emails(from_addr);
+CREATE INDEX IF NOT EXISTS idx_sent_emails_user_from ON sent_emails(user_id, from_addr, created_at DESC);
 

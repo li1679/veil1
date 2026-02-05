@@ -7,7 +7,7 @@ import { domainAPI, mailboxAPI, emailAPI, quotaAPI } from './api.js';
 import { requireUser, logout, canSend } from './auth.js';
 import {
     showToast, copyText, openModal, closeModal, openIOSAlert,
-    animateDelete, initCommon, formatTime, extractCode, escapeHtml,
+    animateDelete, initCommon, formatTime, extractCode, escapeHtml, sanitizeEmailHtml,
     getStorage, setStorage, removeStorage
 } from './common.js';
 
@@ -119,10 +119,13 @@ function renderDomainDropdown() {
     if (trigger) trigger.textContent = selectedDomain;
     if (!optionsList) return;
 
-    optionsList.innerHTML = domains.map(domain => `
-        <li class="option ${domain === selectedDomain ? 'selected' : ''}"
-            onclick="selectDomain(this, '${domain}')">${domain}</li>
-    `).join('');
+    optionsList.innerHTML = domains.map((domain) => {
+        const safeDomain = escapeHtml(domain);
+        return `
+            <li class="option ${domain === selectedDomain ? 'selected' : ''}"
+                data-action="select-domain" data-domain="${safeDomain}">${safeDomain}</li>
+        `;
+    }).join('');
 }
 
 window.toggleDropdown = function() {
@@ -337,22 +340,25 @@ function renderHistory() {
         return;
     }
 
-    container.innerHTML = emailHistory.map(item => `
-        <div class="history-item" id="history-${item.id}">
-            <div class="h-info" onclick="restoreEmail('${item.email}')">
-                <div>${item.email}</div>
-                <div>${item.time} • ${item.emailCount} 封</div>
+    container.innerHTML = emailHistory.map((item) => {
+        const safeEmail = escapeHtml(item.email);
+        return `
+            <div class="history-item" id="history-${item.id}" role="button" tabindex="0" data-action="restore-email" data-email="${safeEmail}">
+                <div class="h-info">
+                    <div>${safeEmail}</div>
+                    <div>${item.time} • ${item.emailCount} 封</div>
+                </div>
+                <div class="h-actions">
+                    <button class="h-btn" type="button" data-action="toggle-pin" data-id="${item.id}">
+                        <i class="${item.pinned ? 'ph-fill' : 'ph'} ph-push-pin" style="${item.pinned ? 'color:var(--accent-blue)' : ''}"></i>
+                    </button>
+                    <button class="h-btn" type="button" data-action="delete-history" data-id="${item.id}">
+                        <i class="ph-bold ph-trash"></i>
+                    </button>
+                </div>
             </div>
-            <div class="h-actions">
-                <button class="h-btn" onclick="togglePin(${item.id})">
-                    <i class="${item.pinned ? 'ph-fill' : 'ph'} ph-push-pin" style="${item.pinned ? 'color:var(--accent-blue)' : ''}"></i>
-                </button>
-                <button class="h-btn" onclick="confirmDeleteHistory(${item.id})">
-                    <i class="ph-bold ph-trash"></i>
-                </button>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 window.restoreEmail = function(email) {
@@ -511,7 +517,7 @@ function renderInbox(emails) {
         const previewRaw = getEmailPreviewText(email).slice(0, 120);
         const avatarChar = String(fromRaw || 'U').trim().charAt(0).toUpperCase();
         return `
-            <div class="mail-item" onclick="openMailDetail(${email.id})">
+            <div class="mail-item" role="button" tabindex="0" data-action="open-mail-detail" data-id="${email.id}">
                 <div class="mail-avatar">${escapeHtml(avatarChar || 'U')}</div>
                 <div class="mail-content">
                     <div class="mail-from">${escapeHtml(fromRaw)}</div>
@@ -521,10 +527,10 @@ function renderInbox(emails) {
                 <div class="mail-meta">
                     <div class="mail-time">${formatTime(email.received_at)}</div>
                     <div class="mail-actions">
-                    <button class="action-btn" onclick="copyEmailCode(event, ${email.id})" title="复制验证码">
+                    <button class="action-btn" type="button" data-action="copy-email-code" data-id="${email.id}" title="复制验证码">
                         <i class="ph-bold ph-copy"></i>
                     </button>
-                    <button class="action-btn delete" onclick="deleteEmailItem(event, ${email.id})" title="删除邮件">
+                    <button class="action-btn delete" type="button" data-action="delete-email-item" data-id="${email.id}" title="删除邮件">
                         <i class="ph-bold ph-trash"></i>
                     </button>
                 </div>
@@ -572,7 +578,8 @@ window.openMailDetail = async function(id) {
         document.getElementById('mailDetailFrom').textContent = email.from_name || email.from_address;
         document.getElementById('mailDetailTo').textContent = email.to_address;
         document.getElementById('mailDetailTime').textContent = formatTime(email.received_at);
-        document.getElementById('mailDetailBody').innerHTML = email.html || `<pre>${escapeHtml(email.text || '')}</pre>`;
+        const safeHtml = sanitizeEmailHtml(email.html);
+        document.getElementById('mailDetailBody').innerHTML = safeHtml || `<pre>${escapeHtml(email.text || '')}</pre>`;
 
         openModal('mailDetailModal');
     } catch (error) {
@@ -586,14 +593,30 @@ window.closeMailDetail = function() {
 
 function startInboxPoll() {
     stopInboxPoll();
-    loadInbox();
-    inboxPollInterval = setInterval(loadInbox, POLL_INTERVAL);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    handleVisibilityChange();
 }
 
 function stopInboxPoll() {
     if (inboxPollInterval) {
         clearInterval(inboxPollInterval);
         inboxPollInterval = null;
+    }
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+}
+
+function handleVisibilityChange() {
+    if (document.hidden) {
+        if (inboxPollInterval) {
+            clearInterval(inboxPollInterval);
+            inboxPollInterval = null;
+        }
+        return;
+    }
+
+    if (!inboxPollInterval && currentEmail) {
+        loadInbox();
+        inboxPollInterval = setInterval(loadInbox, POLL_INTERVAL);
     }
 }
 
@@ -662,6 +685,53 @@ function initEventListeners() {
     const logoutBtn = document.getElementById('logoutBtn');
     if (logoutBtn) {
         logoutBtn.addEventListener('click', logout);
+    }
+
+    // 历史邮箱事件委托
+    const historyContainer = document.getElementById('historyListContainer');
+    if (historyContainer) {
+        historyContainer.addEventListener('click', (e) => {
+            const actionEl = e.target.closest('[data-action]');
+            if (!actionEl || !historyContainer.contains(actionEl)) return;
+            const action = actionEl.dataset.action;
+            if (action === 'restore-email') {
+                window.restoreEmail(actionEl.dataset.email);
+            } else if (action === 'toggle-pin') {
+                window.togglePin(parseInt(actionEl.dataset.id, 10));
+            } else if (action === 'delete-history') {
+                window.confirmDeleteHistory(parseInt(actionEl.dataset.id, 10));
+            }
+        });
+    }
+
+    // 域名选择事件委托
+    const domainOptions = document.getElementById('domainOptions');
+    if (domainOptions) {
+        domainOptions.addEventListener('click', (e) => {
+            const opt = e.target.closest('[data-action="select-domain"]');
+            if (opt) {
+                window.selectDomain(opt, opt.dataset.domain);
+            }
+        });
+    }
+
+    // 收件箱事件委托
+    const inboxContainer = document.getElementById('inboxContainer');
+    if (inboxContainer) {
+        inboxContainer.addEventListener('click', (e) => {
+            const actionEl = e.target.closest('[data-action]');
+            if (!actionEl || !inboxContainer.contains(actionEl)) return;
+            const action = actionEl.dataset.action;
+            const id = parseInt(actionEl.dataset.id || '', 10);
+            if (!Number.isFinite(id)) return;
+            if (action === 'open-mail-detail') {
+                window.openMailDetail(id);
+            } else if (action === 'copy-email-code') {
+                window.copyEmailCode(e, id);
+            } else if (action === 'delete-email-item') {
+                window.deleteEmailItem(e, id);
+            }
+        });
     }
 }
 

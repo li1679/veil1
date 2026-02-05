@@ -44,6 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_r2_object_key ON messages(r2_object_key)
 -- 发送记录表：sent_emails
 CREATE TABLE IF NOT EXISTS sent_emails (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER,
   resend_id TEXT,
   from_addr TEXT NOT NULL,
   to_addrs TEXT NOT NULL,
@@ -60,7 +61,9 @@ CREATE TABLE IF NOT EXISTS sent_emails (
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_sent_emails_resend_id ON sent_emails(resend_id);
+CREATE INDEX IF NOT EXISTS idx_sent_emails_user_id ON sent_emails(user_id);
 CREATE INDEX IF NOT EXISTS idx_sent_emails_r2_object_key ON sent_emails(r2_object_key);
+CREATE INDEX IF NOT EXISTS idx_sent_emails_user_from ON sent_emails(user_id, from_addr, created_at DESC);
 
 
 -- 用户与授权表

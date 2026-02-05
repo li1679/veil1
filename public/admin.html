@@ -29,13 +29,13 @@
                 </div>
 
                 <ul class="nav-menu">
-                    <li class="nav-item active" data-view="home" onclick="switchView('home')">
+                    <li class="nav-item active" data-view="home" role="button" tabindex="0" aria-label="切换到生成邮箱" onclick="switchView('home')">
                         <i class="ph ph-plus-circle" style="font-size: 18px;"></i> 生成邮箱
                     </li>
-                    <li class="nav-item" data-view="users" onclick="switchView('users')">
+                    <li class="nav-item" data-view="users" role="button" tabindex="0" aria-label="切换到用户管理" onclick="switchView('users')">
                         <i class="ph ph-users" style="font-size: 18px;"></i> 用户管理
                     </li>
-                    <li class="nav-item" data-view="all-emails" onclick="switchView('all-emails')">
+                    <li class="nav-item" data-view="all-emails" role="button" tabindex="0" aria-label="切换到所有邮箱" onclick="switchView('all-emails')">
                         <i class="ph ph-list" style="font-size: 18px;"></i> 所有邮箱
                     </li>
                 </ul>
@@ -48,11 +48,11 @@
                             </div>
                             <div class="ios-switch" id="themeSwitch"><div class="ios-switch-thumb"></div></div>
                         </div>
-                        <div class="menu-item" id="logoutMenuItem">
+                        <div class="menu-item" id="logoutMenuItem" role="button" tabindex="0" aria-label="退出登录">
                             <i class="ph-bold ph-sign-out"></i> 退出登录
                         </div>
                     </div>
-                    <div class="user-profile">
+                    <div class="user-profile" role="button" tabindex="0" aria-label="打开用户菜单">
                         <div class="avatar">A</div>
                         <div style="flex:1;">
                             <div class="name-text" style="font-size:14px; font-weight:600; color:#1c1c1e;">Super Admin</div>
@@ -88,7 +88,7 @@
                     </header>
 
                     <div class="content-body">
-                        <div class="email-display-container" onclick="scrollToInbox()">
+                        <div class="email-display-container" role="button" tabindex="0" aria-label="查看收件箱" onclick="scrollToInbox()">
                             <div class="current-email" id="fullEmailDisplay">
                                 <span id="prefixText"></span><span id="suffixText" style="color:var(--label-secondary);"></span>
                             </div>
@@ -108,7 +108,7 @@
                                 <div class="ios-card">
                                     <div style="font-size:13px; margin-bottom:6px; font-weight:500;">域名后缀</div>
                                     <div class="custom-select-wrapper" id="domainSelectWrapper">
-                                        <div class="select-trigger" onclick="toggleDropdown()">
+                                        <div class="select-trigger" id="domainSelectTrigger" role="button" tabindex="0" aria-label="选择域名后缀" aria-haspopup="listbox" aria-expanded="false" onclick="toggleDropdown()">
                                             <span id="selectedDomain">加载中...</span>
                                             <i class="ph-bold ph-caret-down" style="color:#86868B;"></i>
                                         </div>
@@ -120,7 +120,7 @@
                                             <div style="font-size:14px; font-weight:500;">随机域名后缀</div>
                                             <div style="font-size:12px; color:#3C3C4399;">开启后每次生成都会随机选择域名</div>
                                         </div>
-                                        <div class="ios-switch" id="randomDomainSwitch" onclick="toggleRandomDomain()">
+                                        <div class="ios-switch" id="randomDomainSwitch" role="button" tabindex="0" aria-label="切换随机域名后缀" onclick="toggleRandomDomain()">
                                             <div class="ios-switch-thumb"></div>
                                         </div>
                                     </div>
@@ -152,7 +152,7 @@
                             <div class="panel-group">
                                 <div style="display:flex; justify-content:space-between; align-items:center; padding:0 16px;">
                                     <div class="group-header" style="padding:0;">历史邮箱</div>
-                                    <i class="ph ph-trash" onclick="confirmClearHistory()" style="font-size:14px; color:var(--label-secondary); cursor:pointer;" title="清空所有"></i>
+                                    <i class="ph ph-trash" role="button" tabindex="0" aria-label="清空历史邮箱" onclick="confirmClearHistory()" style="font-size:14px; color:var(--label-secondary); cursor:pointer;" title="清空所有"></i>
                                 </div>
                                 <div class="ios-card" style="padding: 10px 20px;">
                                     <div class="history-list" id="historyListContainer">

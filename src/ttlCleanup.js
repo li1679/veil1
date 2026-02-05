@@ -46,25 +46,53 @@ export async function ttlCleanup(db, r2, options = {}) {
       }
 
       try {
-        // 2.1 获取该邮箱的消息（用于删除 R2 对象）
-        const messages = await db.prepare(`
-          SELECT id, r2_object_key FROM messages
-          WHERE mailbox_id = ?
-          LIMIT ?
-        `).bind(mailboxId, messageBatchSize).all();
+        // 2.1 分页删除该邮箱所有消息对应的 R2 对象（避免仅删前 N 条导致长期残留）
+        let r2DeletionOk = true;
+        if (r2) {
+          let lastMessageId = 0;
+          while (true) {
+            if (Date.now() - startTime > maxRuntime) {
+              stats.errors.push('Reached max runtime while deleting R2 objects, stopping early');
+              r2DeletionOk = false;
+              break;
+            }
 
-        // 2.2 删除 R2 对象
-        if (r2 && messages.results) {
-          for (const msg of messages.results) {
-            if (msg.r2_object_key) {
-              try {
-                await r2.delete(msg.r2_object_key);
-                stats.deletedR2Objects++;
-              } catch (e) {
-                stats.errors.push(`R2 delete failed: ${msg.r2_object_key}`);
+            const batch = await db.prepare(`
+              SELECT id, r2_object_key FROM messages
+              WHERE mailbox_id = ? AND id > ?
+              ORDER BY id ASC
+              LIMIT ?
+            `).bind(mailboxId, lastMessageId, messageBatchSize).all();
+
+            const rows = batch?.results || [];
+            if (!rows.length) break;
+
+            lastMessageId = Number(rows[rows.length - 1]?.id || lastMessageId);
+
+            const keys = rows.map((row) => row?.r2_object_key).filter(Boolean);
+            if (!keys.length) continue;
+
+            // 优先尝试批量删除；若运行时不支持，再降级为逐个删除
+            try {
+              await r2.delete(keys);
+              stats.deletedR2Objects += keys.length;
+            } catch (_) {
+              for (const key of keys) {
+                try {
+                  await r2.delete(key);
+                  stats.deletedR2Objects++;
+                } catch (e) {
+                  r2DeletionOk = false;
+                  stats.errors.push(`R2 delete failed: ${key}`);
+                }
               }
             }
           }
+        }
+
+        // R2 删除未完成/失败：保留数据库记录，避免丢失 object_key 导致无法重试
+        if (!r2DeletionOk) {
+          continue;
         }
 
         // 2.3 删除消息记录

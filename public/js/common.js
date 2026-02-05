@@ -179,6 +179,109 @@ export function escapeHtml(value) {
     });
 }
 
+function sanitizeUrl(rawValue, attrName) {
+    const value = String(rawValue ?? '').trim();
+    if (!value) return '';
+
+    // Remove control chars + whitespace for protocol checks (e.g., "java\nscript:")
+    const normalized = value.replace(/[\u0000-\u001F\u007F\s]+/g, '').toLowerCase();
+
+    if (normalized.startsWith('javascript:') || normalized.startsWith('vbscript:')) return '';
+
+    if (normalized.startsWith('data:')) {
+        // Allow only safe image data URIs for <img src="..."> (no svg)
+        if (attrName === 'src' && /^data:image\/(png|gif|jpe?g|webp);/i.test(value)) return value;
+        return '';
+    }
+
+    const schemeMatch = normalized.match(/^([a-z][a-z0-9+.-]*):/i);
+    if (schemeMatch) {
+        const scheme = String(schemeMatch[1] || '').toLowerCase();
+        if (attrName === 'href' || attrName === 'xlink:href' || attrName === 'formaction') {
+            return (scheme === 'http' || scheme === 'https' || scheme === 'mailto' || scheme === 'tel') ? value : '';
+        }
+        if (attrName === 'src') {
+            return (scheme === 'http' || scheme === 'https') ? value : '';
+        }
+    }
+
+    // Relative URL is ok
+    return value;
+}
+
+export function sanitizeEmailHtml(inputHtml) {
+    const raw = String(inputHtml ?? '');
+    if (!raw) return '';
+
+    if (typeof DOMParser === 'undefined') {
+        return escapeHtml(raw);
+    }
+
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(raw, 'text/html');
+        const body = doc.body;
+        if (!body) return '';
+
+        const blockedTags = [
+            'script', 'style', 'iframe', 'object', 'embed',
+            'link', 'meta', 'base',
+            'form', 'input', 'button', 'textarea', 'select', 'option',
+            'svg', 'math'
+        ];
+
+        blockedTags.forEach((tag) => {
+            body.querySelectorAll(tag).forEach((el) => el.remove());
+        });
+
+        body.querySelectorAll('*').forEach((el) => {
+            for (const attr of Array.from(el.attributes || [])) {
+                const name = String(attr.name || '').toLowerCase();
+                const value = String(attr.value ?? '');
+
+                if (name.startsWith('on') || name === 'srcdoc') {
+                    el.removeAttribute(attr.name);
+                    continue;
+                }
+
+                if (name === 'srcset') {
+                    el.removeAttribute(attr.name);
+                    continue;
+                }
+
+                if (name === 'style') {
+                    const lower = value.toLowerCase();
+                    if (lower.includes('expression') || lower.includes('javascript:') || lower.includes('vbscript:')) {
+                        el.removeAttribute(attr.name);
+                    }
+                    continue;
+                }
+
+                if (name === 'href' || name === 'src' || name === 'xlink:href' || name === 'formaction') {
+                    const safe = sanitizeUrl(value, name);
+                    if (!safe) el.removeAttribute(attr.name);
+                    else el.setAttribute(attr.name, safe);
+                    continue;
+                }
+            }
+
+            // Safe defaults for target="_blank"
+            const target = String(el.getAttribute('target') || '').toLowerCase();
+            if (target === '_blank') {
+                const rel = String(el.getAttribute('rel') || '').toLowerCase();
+                const parts = rel.split(/\s+/).filter(Boolean);
+                if (!parts.includes('noopener')) parts.push('noopener');
+                if (!parts.includes('noreferrer')) parts.push('noreferrer');
+                el.setAttribute('rel', parts.join(' '));
+            }
+        });
+
+        return body.innerHTML || '';
+    } catch (_) {
+        return escapeHtml(raw);
+    }
+}
+
 function parseDateInput(dateString) {
     if (!dateString) return null;
     if (dateString instanceof Date) return dateString;
@@ -270,29 +373,33 @@ function initMobileSidebar() {
     if (overlay) {
         overlay.addEventListener('click', closeSidebar);
     }
+}
 
-    // 移动端左滑打开侧边栏
-    let touchStartX = 0;
-    let touchStartY = 0;
+// ============================================
+// 无障碍：键盘激活（Enter/Space）
+// ============================================
+let keyboardActivationInitialized = false;
 
-    document.addEventListener('touchstart', (e) => {
-        touchStartX = e.touches[0].clientX;
-        touchStartY = e.touches[0].clientY;
-    }, { passive: true });
+function initKeyboardActivation() {
+    if (keyboardActivationInitialized) return;
+    keyboardActivationInitialized = true;
 
-    document.addEventListener('touchend', (e) => {
-        if (window.innerWidth > 768) return;
+    document.addEventListener('keydown', (event) => {
+        if (!event || event.defaultPrevented || event.repeat) return;
 
-        const touchEndX = e.changedTouches[0].clientX;
-        const touchEndY = e.changedTouches[0].clientY;
+        const key = event.key;
+        const isEnter = key === 'Enter';
+        const isSpace = key === ' ' || key === 'Spacebar';
+        if (!isEnter && !isSpace) return;
 
-        if (touchStartX <= 20 && (touchEndX - touchStartX) > 50 && Math.abs(touchEndY - touchStartY) < 50) {
-            const sidebar = document.querySelector('.sidebar');
-            const overlay = document.querySelector('.sidebar-overlay');
-            if (sidebar) sidebar.classList.add('open');
-            if (overlay) overlay.classList.add('show');
-        }
-    }, { passive: true });
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+
+        if (!target.matches('[role="button"][tabindex="0"]')) return;
+
+        if (isSpace) event.preventDefault();
+        target.click();
+    });
 }
 
 // ============================================
@@ -302,6 +409,7 @@ export function initCommon() {
     initIOSAlert();
     initUserMenuClose();
     initMobileSidebar();
+    initKeyboardActivation();
     if (typeof window !== 'undefined' && window.initTheme) {
         window.initTheme();
     }

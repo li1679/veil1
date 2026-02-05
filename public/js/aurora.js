@@ -25,6 +25,12 @@ class Blob {
         this.color = colors[Math.floor(Math.random() * colors.length)];
         this.alpha = 0;
         this.targetAlpha = 0.4 + Math.random() * 0.2;
+
+        this._gradient = null;
+        this._gradientX = null;
+        this._gradientY = null;
+        this._gradientRadius = null;
+        this._gradientColor = null;
     }
 
     update() {
@@ -39,14 +45,40 @@ class Blob {
         if (this.alpha < this.targetAlpha) this.alpha += 0.003;
     }
 
+    getGradient() {
+        const gx = Math.round(this.x * 2) / 2;
+        const gy = Math.round(this.y * 2) / 2;
+
+        if (!this._gradient ||
+            this._gradientX !== gx ||
+            this._gradientY !== gy ||
+            this._gradientRadius !== this.radius ||
+            this._gradientColor !== this.color) {
+            this._gradientX = gx;
+            this._gradientY = gy;
+            this._gradientRadius = this.radius;
+            this._gradientColor = this.color;
+
+            const gradient = ctx.createRadialGradient(gx, gy, 0, gx, gy, this.radius);
+            gradient.addColorStop(0, this.color);
+            gradient.addColorStop(1, this.color + '00');
+            this._gradient = gradient;
+        }
+
+        return this._gradient;
+    }
+
     draw() {
-        ctx.beginPath();
-        const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius);
-        gradient.addColorStop(0, this.color + Math.floor(this.alpha * 255).toString(16).padStart(2, '0'));
-        gradient.addColorStop(1, this.color + '00');
+        const gradient = this.getGradient();
+        const x = this._gradientX;
+        const y = this._gradientY;
+        const r = this.radius;
+
+        ctx.save();
+        ctx.globalAlpha = this.alpha;
         ctx.fillStyle = gradient;
-        ctx.rect(0, 0, width, height);
-        ctx.fill();
+        ctx.fillRect(x - r, y - r, r * 2, r * 2);
+        ctx.restore();
     }
 }
 

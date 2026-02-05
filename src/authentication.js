@@ -142,16 +142,67 @@ export async function verifyMailboxLogin(emailAddress, password, DB) {
 }
 
 /**
- * SHA256哈希函数
+ * 兼容性：旧版 SHA-256 直接哈希（仅用于回退验证）
  * @param {string} text - 要哈希的文本
  * @returns {Promise<string>} 哈希后的十六进制字符串
  */
 async function sha256Hex(text) {
   const encoder = new TextEncoder();
-  const data = encoder.encode(text);
+  const data = encoder.encode(String(text ?? ''));
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+const PBKDF2_ITERATIONS_MIN = 50000;
+const PBKDF2_ITERATIONS_MAX = 500000;
+const PBKDF2_ITERATIONS = 150000;
+const PBKDF2_SALT_BYTES = 16;
+const PBKDF2_HASH_BYTES = 32; // 256-bit
+const PBKDF2_FORMAT_PREFIX = 'pbkdf2$sha256$';
+
+function bytesToBase64(bytes) {
+  const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < arr.length; i += chunkSize) {
+    binary += String.fromCharCode(...arr.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(b64) {
+  const text = String(b64 || '');
+  const binary = atob(text);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function timingSafeEqual(a, b) {
+  const aa = a instanceof Uint8Array ? a : new Uint8Array(a || []);
+  const bb = b instanceof Uint8Array ? b : new Uint8Array(b || []);
+  if (aa.length !== bb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < aa.length; i++) diff |= aa[i] ^ bb[i];
+  return diff === 0;
+}
+
+async function pbkdf2Sha256Bytes(password, saltBytes, iterations, lengthBytes) {
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(String(password ?? '')),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt: saltBytes, iterations },
+    keyMaterial,
+    Math.max(1, Number(lengthBytes || 0)) * 8
+  );
+  return new Uint8Array(bits);
 }
 
 /**
@@ -163,8 +214,27 @@ async function sha256Hex(text) {
 export async function verifyPassword(rawPassword, hashed) {
   if (!hashed) return false;
   try {
+    const stored = String(hashed || '').trim();
+
+    // 1) 新格式：PBKDF2-SHA256
+    // 格式：pbkdf2$sha256$<iterations>$<salt_b64>$<hash_b64>
+    if (stored.startsWith(PBKDF2_FORMAT_PREFIX)) {
+      const parts = stored.split('$');
+      if (parts.length === 5 && parts[0] === 'pbkdf2' && parts[1] === 'sha256') {
+        const parsedIterations = parseInt(parts[2] || '0', 10);
+        if (!Number.isFinite(parsedIterations)) return false;
+        const iterations = Math.min(PBKDF2_ITERATIONS_MAX, Math.max(PBKDF2_ITERATIONS_MIN, parsedIterations));
+        const salt = base64ToBytes(parts[3] || '');
+        const expected = base64ToBytes(parts[4] || '');
+        if (!salt.length || !expected.length) return false;
+        const derived = await pbkdf2Sha256Bytes(rawPassword, salt, iterations, expected.length);
+        return timingSafeEqual(derived, expected);
+      }
+    }
+
+    // 2) 旧格式回退：SHA-256(hex) 直接哈希（兼容历史数据）
     const hex = (await sha256Hex(rawPassword)).toLowerCase();
-    return hex === String(hashed || '').toLowerCase();
+    return hex === stored.toLowerCase();
   } catch (_) {
     return false;
   }
@@ -176,7 +246,9 @@ export async function verifyPassword(rawPassword, hashed) {
  * @returns {Promise<string>} 哈希后的密码
  */
 export async function hashPassword(password) {
-  return await sha256Hex(password);
+  const salt = crypto.getRandomValues(new Uint8Array(PBKDF2_SALT_BYTES));
+  const derived = await pbkdf2Sha256Bytes(password, salt, PBKDF2_ITERATIONS, PBKDF2_HASH_BYTES);
+  return `${PBKDF2_FORMAT_PREFIX}${PBKDF2_ITERATIONS}$${bytesToBase64(salt)}$${bytesToBase64(derived)}`;
 }
 
 /**

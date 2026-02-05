@@ -4,6 +4,7 @@ import { getOrCreateMailboxId, getMailboxIdForReceive, getMailboxIdByAddress, re
   listUsersWithCounts, createUser, updateUser, deleteUser, assignMailboxToUser, getUserMailboxes, unassignMailboxFromUser,
   checkMailboxOwnership, getTotalMailboxCount } from './database.js';
 import { parseEmailBody, extractVerificationCode } from './emailParser.js';
+import { sanitizeEmailHtml } from './htmlSanitizer.js';
 import { sendEmailWithResend, sendBatchWithResend, sendEmailWithAutoResend, sendBatchWithAutoResend, getEmailFromResend, updateEmailInResend, cancelEmailInResend } from './emailSender.js';
 
 export async function handleApiRequest(request, db, mailDomains, options = { mockOnly: false, resendApiKey: '', adminName: '', r2: null, authPayload: null, mailboxOnly: false }) {
@@ -196,16 +197,6 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
     }
   }
   
-  async function sha256Hex(text){
-    const enc = new TextEncoder();
-    const data = enc.encode(String(text || ''));
-    const digest = await crypto.subtle.digest('SHA-256', data);
-    const bytes = new Uint8Array(digest);
-    let out = '';
-    for (let i = 0; i < bytes.length; i++) out += bytes[i].toString(16).padStart(2, '0');
-    return out;
-  }
-
   function bytesToBase64(bytes) {
     const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
     if (typeof Buffer !== 'undefined') {
@@ -791,7 +782,10 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
       const mailboxLimit = Number(body.mailboxLimit || 10);
       const password = String(body.password || '').trim();
       let passwordHash = null;
-      if (password){ passwordHash = await sha256Hex(password); }
+      if (password){
+        const { hashPassword } = await import('./authentication.js');
+        passwordHash = await hashPassword(password);
+      }
       const user = await createUser(db, { username, passwordHash, role, mailboxLimit });
       return Response.json(user);
     }catch(e){
@@ -816,7 +810,10 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
       const fields = {};
       if (typeof body.mailboxLimit !== 'undefined') fields.mailbox_limit = Math.max(0, Number(body.mailboxLimit));
       if (typeof body.can_send !== 'undefined') fields.can_send = body.can_send ? 1 : 0;
-      if (typeof body.password === 'string' && body.password){ fields.password_hash = await sha256Hex(String(body.password)); }
+      if (typeof body.password === 'string' && body.password){
+        const { hashPassword } = await import('./authentication.js');
+        fields.password_hash = await hashPassword(String(body.password));
+      }
       await updateUser(db, id, fields);
       return Response.json({ success: true });
     }catch(e){ return new Response('更新失败: ' + (e?.message || e), { status: 500 }); }
@@ -926,6 +923,14 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
   if (!isMock && request.method === 'GET' && path.startsWith('/api/users/') && path.endsWith('/mailboxes')){
     const id = Number(path.split('/')[3]);
     if (!id) return new Response('无效ID', { status: 400 });
+
+    // 仅严格管理员可查看任意用户；普通用户只能查看自己的邮箱列表
+    if (!isStrictAdmin()) {
+      const payload = getJwtPayload();
+      const uid = Number(payload?.userId || 0);
+      if (!uid) return new Response('Unauthorized', { status: 401 });
+      if (uid !== id) return new Response('Forbidden', { status: 403 });
+    }
     try{ const list = await getUserMailboxes(db, id); return Response.json(list || []); }
     catch(e){ return new Response('查询失败', { status: 500 }); }
   }
@@ -1052,15 +1057,24 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
     const from = url.searchParams.get('from') || url.searchParams.get('mailbox') || '';
     if (!from){ return new Response('缺少 from 参数', { status: 400 }); }
     try{
+      const actor = await resolveSendActor();
+      if (actor.error) return actor.error;
+
+      const fromAddr = extractEmail(from).trim().toLowerCase();
+      const ownership = await checkMailboxOwnership(db, fromAddr, actor.uid);
+      if (!ownership.exists || !ownership.ownedByUser) {
+        return new Response('Forbidden', { status: 403 });
+      }
+
       // 优化：减少默认查询数量
       const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 50);
       const { results } = await db.prepare(`
         SELECT id, resend_id, to_addrs as recipients, subject, created_at, status
         FROM sent_emails
-        WHERE from_addr = ?
+        WHERE from_addr = ? AND (user_id = ? OR user_id IS NULL)
         ORDER BY datetime(created_at) DESC
         LIMIT ?
-      `).bind(String(from).trim().toLowerCase(), limit).all();
+      `).bind(fromAddr, actor.uid, limit).all();
       return Response.json(results || []);
     }catch(e){
       console.error('查询发件记录失败:', e);
@@ -1074,14 +1088,62 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
     const id = path.split('/')[3];
     try{
       const { results } = await db.prepare(`
-        SELECT id, resend_id, from_addr, to_addrs as recipients, subject,
+        SELECT id, user_id, resend_id, from_addr, to_addrs as recipients, subject,
                html_content, text_content, status, scheduled_at, created_at
         FROM sent_emails WHERE id = ?
       `).bind(id).all();
       if (!results || !results.length) return new Response('未找到发件', { status: 404 });
-      return Response.json(results[0]);
+
+      const actor = await resolveSendActor();
+      if (actor.error) return actor.error;
+      const access = await ensureSentEmailRowAccess(actor.uid, results[0]);
+      if (access) return access;
+
+      const row = { ...results[0] };
+      delete row.user_id;
+      return Response.json(row);
     }catch(e){
       return new Response('查询失败', { status: 500 });
+    }
+  }
+
+  async function resolveSendActor() {
+    const payload = getJwtPayload();
+    const role = String(payload?.role || '');
+    if (!payload) return { error: new Response('Unauthorized', { status: 401 }) };
+    if (role !== 'admin' && role !== 'user') return { error: new Response('Forbidden', { status: 403 }) };
+
+    const uid = await resolveAdminUserId();
+    if (!uid) return { error: new Response('Unauthorized', { status: 401 }) };
+
+    return { uid, role, payload };
+  }
+
+  async function ensureSentEmailRowAccess(uid, row) {
+    const currentUid = Number(uid || 0);
+    if (!currentUid) return new Response('Unauthorized', { status: 401 });
+
+    if (row?.user_id == null) return new Response('Forbidden', { status: 403 });
+
+    const rowUid = Number(row.user_id || 0);
+    if (!rowUid) return new Response('Forbidden', { status: 403 });
+    return rowUid === currentUid ? null : new Response('Forbidden', { status: 403 });
+  }
+
+  async function getSentEmailRowByResendId(resendId) {
+    const id = String(resendId || '').trim();
+    if (!id) return null;
+    try {
+      const { results } = await db.prepare(`
+        SELECT id, user_id, resend_id, from_addr
+        FROM sent_emails
+        WHERE resend_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+      `).bind(id).all();
+      return (results || [])[0] || null;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -1118,13 +1180,28 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
       // 校验是否允许发件
       const allowed = await checkSendPermission();
       if (!allowed) return new Response('未授权发件或该用户未被授予发件权限', { status: 403 });
+
+      const actor = await resolveSendActor();
+      if (actor.error) return actor.error;
+
       const sendPayload = await request.json();
+
+      // 发件人必须是当前用户绑定的邮箱，禁止伪造
+      const fromAddr = extractEmail(sendPayload?.from || '').trim().toLowerCase();
+      if (!fromAddr) return new Response('缺少 from 参数', { status: 400 });
+      const ownership = await checkMailboxOwnership(db, fromAddr, actor.uid);
+      if (!ownership.exists || !ownership.ownedByUser) {
+        return new Response('from 地址不属于当前用户', { status: 403 });
+      }
+      sendPayload.from = fromAddr;
+
       // 使用智能发送，根据发件人域名自动选择API密钥
       const result = await sendEmailWithAutoResend(RESEND_API_KEY, sendPayload);
       await recordSentEmail(db, {
+        userId: actor.uid,
         resendId: result.id || null,
         fromName: sendPayload.fromName || null,
-        from: sendPayload.from,
+        from: fromAddr,
         to: sendPayload.to,
         subject: sendPayload.subject,
         html: sendPayload.html,
@@ -1147,7 +1224,47 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
       // 校验是否允许发件
       const allowed = await checkSendPermission();
       if (!allowed) return new Response('未授权发件或该用户未被授予发件权限', { status: 403 });
+
+      const actor = await resolveSendActor();
+      if (actor.error) return actor.error;
+
       const items = await request.json();
+      if (!Array.isArray(items) || items.length === 0) {
+        return new Response('请求体必须为数组', { status: 400 });
+      }
+
+      // 批量校验所有发件人归属，禁止伪造
+      const normalizedFromList = items.map((payload) => extractEmail(payload?.from || '').trim().toLowerCase());
+      if (normalizedFromList.some((addr) => !addr)) {
+        return new Response('缺少 from 参数', { status: 400 });
+      }
+
+      const uniqueFrom = Array.from(new Set(normalizedFromList));
+      const placeholders = uniqueFrom.map(() => '?').join(',');
+      const ownedSet = new Set();
+      if (uniqueFrom.length > 0) {
+        const { results } = await db.prepare(`
+          SELECT m.address AS address
+          FROM user_mailboxes um
+          JOIN mailboxes m ON m.id = um.mailbox_id
+          WHERE um.user_id = ? AND m.address IN (${placeholders})
+        `).bind(actor.uid, ...uniqueFrom).all();
+        (results || []).forEach((row) => {
+          if (row?.address) ownedSet.add(String(row.address).trim().toLowerCase());
+        });
+      }
+
+      for (const addr of uniqueFrom) {
+        if (!ownedSet.has(addr)) {
+          return new Response('from 地址不属于当前用户', { status: 403 });
+        }
+      }
+
+      // 规范化 items 中的 from 字段（确保发送与记录一致）
+      for (let i = 0; i < items.length; i++) {
+        items[i] = { ...(items[i] || {}), from: normalizedFromList[i] };
+      }
+
       // 使用智能批量发送，自动按域名分组并使用对应的API密钥
       const result = await sendBatchWithAutoResend(RESEND_API_KEY, items);
       try{
@@ -1157,6 +1274,7 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
           const id = arr[i]?.id;
           const payload = items[i] || {};
           await recordSentEmail(db, {
+            userId: actor.uid,
             resendId: id || null,
             fromName: payload.fromName || null,
             from: payload.from,
@@ -1181,6 +1299,14 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
     const id = path.split('/')[3];
     try{
       if (!RESEND_API_KEY) return new Response('未配置 Resend API Key', { status: 500 });
+
+      const actor = await resolveSendActor();
+      if (actor.error) return actor.error;
+      const row = await getSentEmailRowByResendId(id);
+      if (!row) return new Response('未找到发件记录', { status: 404 });
+      const access = await ensureSentEmailRowAccess(actor.uid, row);
+      if (access) return access;
+
       const data = await getEmailFromResend(RESEND_API_KEY, id);
       return Response.json(data);
     }catch(e){
@@ -1194,16 +1320,24 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
     const id = path.split('/')[3];
     try{
       if (!RESEND_API_KEY) return new Response('未配置 Resend API Key', { status: 500 });
+
+      const actor = await resolveSendActor();
+      if (actor.error) return actor.error;
+      const row = await getSentEmailRowByResendId(id);
+      if (!row) return new Response('未找到发件记录', { status: 404 });
+      const access = await ensureSentEmailRowAccess(actor.uid, row);
+      if (access) return access;
+
       const body = await request.json();
       let data = { ok: true };
       // 如果只是更新本地状态，不必请求 Resend
       if (body && typeof body.status === 'string'){
-        await updateSentEmail(db, id, { status: body.status });
+        await updateSentEmail(db, id, { status: body.status }, actor.uid);
       }
       // 更新定时设置时需要触达 Resend
       if (body && body.scheduledAt){
         data = await updateEmailInResend(RESEND_API_KEY, { id, scheduledAt: body.scheduledAt });
-        await updateSentEmail(db, id, { scheduled_at: body.scheduledAt });
+        await updateSentEmail(db, id, { scheduled_at: body.scheduledAt }, actor.uid);
       }
       return Response.json(data || { ok: true });
     }catch(e){
@@ -1217,8 +1351,16 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
     const id = path.split('/')[3];
     try{
       if (!RESEND_API_KEY) return new Response('未配置 Resend API Key', { status: 500 });
+
+      const actor = await resolveSendActor();
+      if (actor.error) return actor.error;
+      const row = await getSentEmailRowByResendId(id);
+      if (!row) return new Response('未找到发件记录', { status: 404 });
+      const access = await ensureSentEmailRowAccess(actor.uid, row);
+      if (access) return access;
+
       const data = await cancelEmailInResend(RESEND_API_KEY, id);
-      await updateSentEmail(db, id, { status: 'canceled' });
+      await updateSentEmail(db, id, { status: 'canceled' }, actor.uid);
       return Response.json(data);
     }catch(e){
       return new Response('取消失败: ' + e.message, { status: 500 });
@@ -1230,7 +1372,16 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
     if (isMock) return new Response('演示模式不可操作', { status: 403 });
     const id = path.split('/')[3];
     try{
-      await db.prepare('DELETE FROM sent_emails WHERE id = ?').bind(id).run();
+      const actor = await resolveSendActor();
+      if (actor.error) return actor.error;
+
+      const { results } = await db.prepare('SELECT id, user_id, from_addr FROM sent_emails WHERE id = ? LIMIT 1').bind(id).all();
+      const row = (results || [])[0];
+      if (!row) return new Response('未找到发件记录', { status: 404 });
+      const access = await ensureSentEmailRowAccess(actor.uid, row);
+      if (access) return access;
+
+      await db.prepare('DELETE FROM sent_emails WHERE id = ? AND (user_id = ? OR user_id IS NULL)').bind(id, actor.uid).run();
       return Response.json({ success: true });
     }catch(e){
       return new Response('删除发件记录失败: ' + e.message, { status: 500 });
@@ -1351,7 +1502,14 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
                  msg.r2_object_key as r2_object_key, msg.received_at as received_at, msg.is_read as is_read
           ${baseSql}
         `).bind(...bindArgs).all();
-        return Response.json(results || []);
+        const rows = results || [];
+        const sanitized = await Promise.all(rows.map(async (row) => {
+          if (row && row.html_content) {
+            return { ...row, html_content: await sanitizeEmailHtml(row.html_content) };
+          }
+          return row;
+        }));
+        return Response.json(sanitized);
       }catch(e){
         const baseSql = strict
           ? `FROM messages msg WHERE msg.id IN (${placeholders})${timeFilter}`
@@ -1369,7 +1527,14 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
                  msg.received_at as received_at, msg.is_read as is_read
           ${baseSql}
         `).bind(...bindArgs).all();
-        return Response.json(results || []);
+        const rows = results || [];
+        const sanitized = await Promise.all(rows.map(async (row) => {
+          if (row && row.html_content) {
+            return { ...row, html_content: await sanitizeEmailHtml(row.html_content) };
+          }
+          return row;
+        }));
+        return Response.json(sanitized);
       }
     }catch(e){
       return new Response('批量查询失败', { status: 500 });
@@ -1638,7 +1803,12 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
       const result = await toggleMailboxPin(db, address, uid);
       return Response.json({ success: true, ...result });
     } catch (e) {
-      return new Response('操作失败: ' + e.message, { status: 500 });
+      const msg = String(e?.message || e || '操作失败');
+      let status = 500;
+      if (msg.includes('未登录')) status = 401;
+      else if (msg.includes('无权')) status = 403;
+      else if (msg.includes('不存在')) status = 404;
+      return new Response('操作失败: ' + msg, { status });
     }
   }
 
@@ -1688,7 +1858,8 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
       }
       
       // 生成密码哈希
-      const newPasswordHash = await sha256Hex(newPassword);
+      const { hashPassword } = await import('./authentication.js');
+      const newPasswordHash = await hashPassword(newPassword);
       const newPasswordEnc = await encryptMailboxPassword(newPassword);
       
       // 更新密码
@@ -1974,6 +2145,7 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
         }catch(_){ /* 忽略：旧表可能缺少字段 */ }
       }
 
+      html_content = await sanitizeEmailHtml(html_content);
       return Response.json({ ...row, content, html_content, download: row.r2_object_key ? `/api/email/${emailId}/download` : '' });
     }catch(e){
       const { results } = await db.prepare(`
@@ -1982,7 +2154,9 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
       `).bind(emailId).all();
       if (!results || !results.length) return new Response('未找到邮件', { status: 404 });
       await db.prepare(`UPDATE messages SET is_read = 1 WHERE id = ?`).bind(emailId).run();
-      return Response.json(results[0]);
+      const row = results[0] || {};
+      row.html_content = await sanitizeEmailHtml(row.html_content);
+      return Response.json(row);
     }
   }
 

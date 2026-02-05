@@ -1,5 +1,5 @@
 ﻿import { handleApiRequest, handleEmailReceive } from './apiHandlers.js';
-import { createJwt, verifyJwt, buildSessionCookie, verifyMailboxLogin } from './authentication.js';
+import { createJwt, verifyJwt, buildSessionCookie, verifyMailboxLogin, verifyPassword } from './authentication.js';
 import { extractEmail } from './commonUtils.js';
 import { getTotalMailboxCount } from './database.js';
 import { getDatabaseWithValidation } from './dbConnectionHelper.js';
@@ -137,39 +137,6 @@ export class Router {
 
     // 未找到匹配的路由
     return null;
-  }
-}
-
-/**
- * 计算文本的SHA-256哈希值并返回十六进制字符串
- * @param {string} text - 需要计算哈希的文本内容
- * @returns {Promise<string>} 十六进制格式的SHA-256哈希值
- */
-async function sha256Hex(text) {
-  const enc = new TextEncoder();
-  const data = enc.encode(String(text || ''));
-  const digest = await crypto.subtle.digest('SHA-256', data);
-  const bytes = new Uint8Array(digest);
-  let out = '';
-  for (let i = 0; i < bytes.length; i++) {
-    out += bytes[i].toString(16).padStart(2, '0');
-  }
-  return out;
-}
-
-/**
- * 验证原始密码与哈希密码是否匹配
- * @param {string} rawPassword - 原始明文密码
- * @param {string} hashed - 已哈希的密码
- * @returns {Promise<boolean>} 验证结果，true表示密码匹配
- */
-async function verifyPassword(rawPassword, hashed) {
-  if (!hashed) return false;
-  try {
-    const hex = (await sha256Hex(rawPassword)).toLowerCase();
-    return hex === String(hashed || '').toLowerCase();
-  } catch (_) {
-    return false;
   }
 }
 
@@ -560,8 +527,16 @@ export function createRouter() {
   router.post('/receive', async (context) => {
     const { request, env } = context;
 
-    // RECEIVE_TOKEN 验证（可选）
-    const RECEIVE_TOKEN = env.RECEIVE_TOKEN || '';
+    // RECEIVE_TOKEN 验证
+    // - 本地开发（localhost/127.0.0.1）允许不配置
+    // - 非本地（生产/预览环境）强制要求配置，否则拒绝服务并提示缺失配置
+    const RECEIVE_TOKEN = String(env.RECEIVE_TOKEN || '').trim();
+    let hostname = '';
+    try { hostname = new URL(request.url).hostname; } catch (_) { hostname = ''; }
+    const isLocal = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+    if (!isLocal && !RECEIVE_TOKEN) {
+      return new Response('缺少 RECEIVE_TOKEN 配置：生产环境必须设置 RECEIVE_TOKEN', { status: 500 });
+    }
     if (RECEIVE_TOKEN) {
       const auth = request.headers.get('Authorization') || '';
       const bearer = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';

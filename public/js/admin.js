@@ -8,7 +8,7 @@ import { requireAdmin, logout, canSend } from './auth.js';
 import {
     showToast, copyText, openModal, closeModal, openIOSAlert,
     animateDelete, animateBatchDelete, toggleUserMenu, initCommon,
-    formatTime, formatDate, extractCode, escapeHtml,
+    formatTime, formatDate, extractCode, escapeHtml, sanitizeEmailHtml,
     getStorage, setStorage, removeStorage
 } from './common.js';
 import { initTheme, toggleTheme } from './theme.js';
@@ -27,6 +27,8 @@ let selectedUserIds = new Set();
 let selectedEmailIds = new Set();
 let viewerMailbox = null;
 let viewerEmails = [];
+let allMailboxesLoadController = null;
+let allMailboxesLoadSeq = 0;
 
 function getLastMailboxStorageKey() {
     const username = currentUser?.username ? String(currentUser.username) : 'unknown';
@@ -228,10 +230,13 @@ function renderDomainDropdown() {
     if (trigger) trigger.textContent = selectedDomain;
     if (!optionsList) return;
 
-    optionsList.innerHTML = domains.map((domain, index) => `
-        <li class="option ${domain === selectedDomain ? 'selected' : ''}"
-            onclick="selectDomain(this, '${domain}')">${domain}</li>
-    `).join('');
+    optionsList.innerHTML = domains.map((domain) => {
+        const safeDomain = escapeHtml(domain);
+        return `
+            <li class="option ${domain === selectedDomain ? 'selected' : ''}"
+                data-action="select-domain" data-domain="${safeDomain}">${safeDomain}</li>
+        `;
+    }).join('');
 }
 
 window.toggleDropdown = function() {
@@ -427,22 +432,25 @@ function renderHistory() {
         return;
     }
 
-    container.innerHTML = emailHistory.map(item => `
-        <div class="history-item" id="history-${item.id}">
-            <div class="h-info" onclick="restoreEmail('${item.email}')">
-                <div>${item.email}</div>
-                <div>${item.time} • ${item.emailCount} 封</div>
+    container.innerHTML = emailHistory.map((item) => {
+        const safeEmail = escapeHtml(item.email);
+        return `
+            <div class="history-item" id="history-${item.id}" role="button" tabindex="0" data-action="restore-email" data-email="${safeEmail}">
+                <div class="h-info">
+                    <div>${safeEmail}</div>
+                    <div>${item.time} • ${item.emailCount} 封</div>
+                </div>
+                <div class="h-actions">
+                    <button class="h-btn" type="button" data-action="toggle-pin" data-id="${item.id}">
+                        <i class="${item.pinned ? 'ph-fill' : 'ph'} ph-push-pin" style="${item.pinned ? 'color:var(--accent-blue)' : ''}"></i>
+                    </button>
+                    <button class="h-btn" type="button" data-action="delete-history" data-id="${item.id}">
+                        <i class="ph-bold ph-trash"></i>
+                    </button>
+                </div>
             </div>
-            <div class="h-actions">
-                <button class="h-btn" onclick="togglePin(${item.id})">
-                    <i class="${item.pinned ? 'ph-fill' : 'ph'} ph-push-pin" style="${item.pinned ? 'color:var(--accent-blue)' : ''}"></i>
-                </button>
-                <button class="h-btn" onclick="confirmDeleteHistory(${item.id})">
-                    <i class="ph-bold ph-trash"></i>
-                </button>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 window.restoreEmail = function(email) {
@@ -602,7 +610,7 @@ function renderInbox(emails) {
         const previewRaw = getEmailPreviewText(email).slice(0, 120);
         const avatarChar = String(fromRaw || 'U').trim().charAt(0).toUpperCase();
         return `
-            <div class="mail-item" onclick="openMailDetail(${email.id})">
+            <div class="mail-item" role="button" tabindex="0" data-action="open-mail-detail" data-id="${email.id}">
                 <div class="mail-avatar">${escapeHtml(avatarChar || 'U')}</div>
                 <div class="mail-content">
                     <div class="mail-from">${escapeHtml(fromRaw)}</div>
@@ -612,10 +620,10 @@ function renderInbox(emails) {
                 <div class="mail-meta">
                     <div class="mail-time">${formatTime(email.received_at)}</div>
                     <div class="mail-actions">
-                    <button class="action-btn" onclick="copyEmailCode(event, ${email.id})" title="复制验证码">
+                    <button class="action-btn" type="button" data-action="copy-email-code" data-id="${email.id}" title="复制验证码">
                         <i class="ph-bold ph-copy"></i>
                     </button>
-                    <button class="action-btn delete" onclick="deleteEmailItem(event, ${email.id})" title="删除邮件">
+                    <button class="action-btn delete" type="button" data-action="delete-email-item" data-id="${email.id}" title="删除邮件">
                         <i class="ph-bold ph-trash"></i>
                     </button>
                 </div>
@@ -663,7 +671,8 @@ window.openMailDetail = async function(id) {
         document.getElementById('mailDetailFrom').textContent = email.from_name || email.from_address;
         document.getElementById('mailDetailTo').textContent = email.to_address;
         document.getElementById('mailDetailTime').textContent = formatTime(email.received_at);
-        document.getElementById('mailDetailBody').innerHTML = email.html || `<pre>${escapeHtml(email.text || '')}</pre>`;
+        const safeHtml = sanitizeEmailHtml(email.html);
+        document.getElementById('mailDetailBody').innerHTML = safeHtml || `<pre>${escapeHtml(email.text || '')}</pre>`;
 
         openModal('mailDetailModal');
     } catch (error) {
@@ -678,14 +687,30 @@ window.closeMailDetail = function() {
 // 收件箱轮询
 function startInboxPoll() {
     stopInboxPoll();
-    loadInbox();
-    inboxPollInterval = setInterval(loadInbox, POLL_INTERVAL);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    handleVisibilityChange();
 }
 
 function stopInboxPoll() {
     if (inboxPollInterval) {
         clearInterval(inboxPollInterval);
         inboxPollInterval = null;
+    }
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+}
+
+function handleVisibilityChange() {
+    if (document.hidden) {
+        if (inboxPollInterval) {
+            clearInterval(inboxPollInterval);
+            inboxPollInterval = null;
+        }
+        return;
+    }
+
+    if (!inboxPollInterval && currentEmail) {
+        loadInbox();
+        inboxPollInterval = setInterval(loadInbox, POLL_INTERVAL);
     }
 }
 
@@ -834,12 +859,12 @@ function renderUserTable() {
         const subEmailsHTML = subEmails.length === 0
             ? '<div style="padding:10px; color:#999; font-size:13px; text-align:center;">暂无分配邮箱</div>'
             : subEmails.map(mail => {
-                const safeAddress = String(mail.address || '').replace(/'/g, "\\'");
+                const safeAddress = escapeHtml(String(mail.address || ''));
                 const actions = selectable
                     ? `
                         <div class="email-actions">
-                            <button class="action-btn" onclick="copyMailboxAddress('${safeAddress}', event)"><i class="ph-bold ph-copy"></i></button>
-                            <button class="action-btn delete" onclick="deleteSubEmail(${user.id}, ${mail.id})"><i class="ph-bold ph-trash"></i></button>
+                            <button class="action-btn" type="button" data-action="copy-mailbox" data-address="${safeAddress}"><i class="ph-bold ph-copy"></i></button>
+                            <button class="action-btn delete" type="button" data-action="delete-sub-email" data-user-id="${user.id}" data-mailbox-id="${mail.id}"><i class="ph-bold ph-trash"></i></button>
                         </div>
                     `
                     : `
@@ -851,7 +876,7 @@ function renderUserTable() {
                     <div class="email-item" id="email-item-${mail.id}">
                         <div style="display:flex; align-items:center; gap:8px;">
                             <i class="ph ph-envelope-simple" style="color:var(--accent-blue);"></i>
-                            <span style="font-weight:500; color:#333;">${mail.address}</span>
+                            <span style="font-weight:500; color:#333;">${safeAddress}</span>
                             <span style="font-size:12px; color:#999; margin-left:8px;">${formatDate(mail.created_at)}</span>
                         </div>
                         ${actions}
@@ -860,11 +885,11 @@ function renderUserTable() {
             }).join('');
 
         const checkbox = selectable
-            ? `<div class="custom-checkbox ${isSelected ? 'checked' : ''}" onclick="toggleSelectUser(${user.id})"></div>`
+            ? `<div class="custom-checkbox ${isSelected ? 'checked' : ''}" data-action="toggle-select-user" data-user-id="${user.id}"></div>`
             : `<div class="custom-checkbox disabled"></div>`;
 
         const sendSwitch = selectable
-            ? `<div class="ios-switch ${user.can_send ? 'on' : ''}" style="transform:scale(0.8); transform-origin:left;" onclick="event.stopPropagation(); toggleSendPermission(${user.id})">
+            ? `<div class="ios-switch ${user.can_send ? 'on' : ''}" style="transform:scale(0.8); transform-origin:left;" data-action="toggle-send-permission" data-user-id="${user.id}">
                     <div class="ios-switch-thumb"></div>
                </div>`
             : `<div class="ios-switch ${user.can_send ? 'on' : ''} disabled" style="transform:scale(0.8); transform-origin:left;">
@@ -872,7 +897,7 @@ function renderUserTable() {
                </div>`;
 
         const statusSelect = `
-            <select class="status-select ${user.status === 'Active' ? 'active' : 'inactive'}" onclick="event.stopPropagation()" onchange="changeUserStatus(${user.id}, this.value)" ${selectable ? '' : 'disabled'}>
+            <select class="status-select ${user.status === 'Active' ? 'active' : 'inactive'}" data-action="change-user-status" data-user-id="${user.id}" ${selectable ? '' : 'disabled'}>
                 <option value="Active" ${user.status === 'Active' ? 'selected' : ''}>活跃</option>
                 <option value="Inactive" ${user.status !== 'Active' ? 'selected' : ''}>停用</option>
             </select>
@@ -880,13 +905,13 @@ function renderUserTable() {
 
         const actionButtons = selectable
             ? `
-                <button class="action-btn" title="编辑" onclick="event.stopPropagation(); openEditUser(${user.id})"><i class="ph-bold ph-pencil-simple"></i></button>
-                <button class="action-btn delete" title="删除" onclick="event.stopPropagation(); deleteUser(${user.id})"><i class="ph-bold ph-trash"></i></button>
+                <button class="action-btn" type="button" title="编辑" data-action="open-edit-user" data-user-id="${user.id}"><i class="ph-bold ph-pencil-simple"></i></button>
+                <button class="action-btn delete" type="button" title="删除" data-action="delete-user" data-user-id="${user.id}"><i class="ph-bold ph-trash"></i></button>
               `
             : `<div class="row-locked"><i class="ph-bold ph-lock"></i><span>只读</span></div>`;
 
         const assignButton = selectable
-            ? `<button class="btn btn-primary" style="height:28px; font-size:12px;" onclick="openAssignModal(${user.id})"><i class="ph-bold ph-plus"></i> 分配新邮箱</button>`
+            ? `<button class="btn btn-primary" type="button" style="height:28px; font-size:12px;" data-action="open-assign-modal" data-user-id="${user.id}"><i class="ph-bold ph-plus"></i> 分配新邮箱</button>`
             : `<div class="locked-hint">只读</div>`;
 
         const detailsPanel = locked
@@ -905,8 +930,8 @@ function renderUserTable() {
 
         return `
             <div class="user-block ${isSelected ? 'selected' : ''}" id="user-block-${user.id}" style="${isSelected ? 'background-color: #F2F8FF;' : ''}">
-                <div class="t-row" onclick="toggleExpand(${user.id}, event)">
-                    <div style="display: flex; justify-content: center;" onclick="event.stopPropagation()">
+                <div class="t-row" data-action="toggle-expand" data-user-id="${user.id}">
+                    <div style="display: flex; justify-content: center;">
                         ${checkbox}
                     </div>
                     <div class="col-avatar"><div class="avatar">${(user.name || user.username || 'U').substring(0, 2).toUpperCase()}</div></div>
@@ -1221,16 +1246,30 @@ window.deleteSubEmail = function(userId, mailboxId) {
 // 所有邮箱管理
 // ============================================
 async function loadAllMailboxes() {
+    const requestSeq = ++allMailboxesLoadSeq;
+    if (allMailboxesLoadController) {
+        try {
+            allMailboxesLoadController.abort();
+        } catch (_) {
+            // ignore
+        }
+    }
+    allMailboxesLoadController = new AbortController();
     try {
         const domainFilter = document.getElementById('domainFilter')?.value || '';
         const userFilter = document.getElementById('userFilter')?.value || '';
         const search = document.getElementById('emailSearchInput')?.value || '';
 
-        const response = await adminMailboxAPI.getAllMailboxes({
-            domain: domainFilter,
-            created_by: userFilter,
-            search: search
-        });
+        const response = await adminMailboxAPI.getAllMailboxes(
+            {
+                domain: domainFilter,
+                created_by: userFilter,
+                search: search
+            },
+            { signal: allMailboxesLoadController.signal }
+        );
+
+        if (requestSeq !== allMailboxesLoadSeq) return;
 
         allMailboxes = response.mailboxes || [];
         renderAllMailboxes();
@@ -1238,6 +1277,7 @@ async function loadAllMailboxes() {
         // 填充域名筛选下拉框
         renderDomainFilter();
     } catch (error) {
+        if (error?.name === 'AbortError') return;
         console.error('Failed to load mailboxes:', error);
         showToast('加载邮箱失败');
     }
@@ -1269,7 +1309,7 @@ function renderAllMailboxes() {
         const pwdText = isDefaultPwd ? '默认 (同邮箱)' : '已自定义';
         const pwdClass = isDefaultPwd ? '' : 'custom';
         const pwdColor = isDefaultPwd ? 'var(--label-secondary)' : 'var(--accent-blue)';
-        const safeAddress = String(item.address || '').replace(/'/g, "\\'");
+        const safeAddress = escapeHtml(String(item.address || ''));
         const remarkRaw = String(item.remark || '').trim();
         const remarkHtml = remarkRaw
             ? escapeHtml(remarkRaw)
@@ -1278,26 +1318,26 @@ function renderAllMailboxes() {
         return `
             <div class="e-row" id="email-row-${item.id}" style="${isSelected ? 'background: #F2F8FF;' : ''}">
                 <div style="display: flex; justify-content: center;">
-                    <div class="custom-checkbox ${isSelected ? 'checked' : ''}" onclick="toggleSelectEmail(${item.id})"></div>
+                    <div class="custom-checkbox ${isSelected ? 'checked' : ''}" data-action="toggle-select-email" data-id="${item.id}"></div>
                 </div>
                 <div class="col-email">
                     <i class="ph ph-envelope-simple" style="color: #999;"></i>
-                    <span>${item.address}</span>
+                    <span>${safeAddress}</span>
                 </div>
                 <div style="display:flex; align-items:center; min-width:0;">
                     <span class="locked-hint" title="创建者不可编辑">${escapeHtml(String(item.created_by_username || '系统'))}</span>
                 </div>
-                <div class="col-remark" onclick="openRemarkModal(${item.id}, '${safeAddress}')">
+                <div class="col-remark" data-action="open-remark-modal" data-id="${item.id}" data-address="${safeAddress}">
                     <i class="ph-bold ph-note-pencil" style="font-size: 14px; opacity: 0.75;"></i>
                     <span class="remark-text">${remarkHtml}</span>
                 </div>
-                <div class="col-pass" onclick="openPwdModal(${item.id}, '${item.address}')">
+                <div class="col-pass" data-action="open-pwd-modal" data-id="${item.id}" data-address="${safeAddress}">
                     <div class="pass-dot ${pwdClass}"></div>
                     <span style="color: ${pwdColor}; font-weight: 500;">${pwdText}</span>
                     <i class="ph-bold ph-pencil-simple" style="font-size: 12px; margin-left: 4px; opacity: 0.5;"></i>
                 </div>
                 <div class="hover-control-group">
-                    <div class="ios-switch ${item.is_login_allowed ? 'on' : ''}" onclick="toggleLoginAllowed(${item.id})">
+                    <div class="ios-switch ${item.is_login_allowed ? 'on' : ''}" data-action="toggle-login-allowed" data-id="${item.id}">
                         <div class="ios-switch-thumb"></div>
                     </div>
                     <span style="font-size: 12px; margin-left: 6px; width: 30px; color: #666;">
@@ -1306,13 +1346,13 @@ function renderAllMailboxes() {
                 </div>
                 <div style="color: #999; font-size: 13px;">${formatDate(item.created_at)}</div>
                 <div class="col-actions">
-                    <button class="icon-btn" title="查看收件箱" onclick="openMailboxViewer('${safeAddress}')">
+                    <button class="icon-btn" type="button" title="查看收件箱" data-action="open-mailbox-viewer" data-address="${safeAddress}">
                         <i class="ph-bold ph-envelope-open"></i>
                     </button>
-                    <button class="icon-btn" title="复制邮箱" onclick="copyMailboxAddress('${safeAddress}', event)">
+                    <button class="icon-btn" type="button" title="复制邮箱" data-action="copy-mailbox" data-address="${safeAddress}">
                         <i class="ph-bold ph-copy"></i>
                     </button>
-                    <button class="icon-btn delete" title="删除" onclick="deleteSingleMailbox(${item.id})">
+                    <button class="icon-btn delete" type="button" title="删除" data-action="delete-single-mailbox" data-id="${item.id}">
                         <i class="ph-bold ph-trash"></i>
                     </button>
                 </div>
@@ -1364,7 +1404,7 @@ function renderMailboxViewer(emails) {
             const previewRaw = getEmailPreviewText(email).slice(0, 120);
             const avatarChar = String(fromRaw || 'U').trim().charAt(0).toUpperCase();
             return `
-                <div class="mail-item" onclick="openViewerMailDetail(${email.id})">
+                <div class="mail-item" role="button" tabindex="0" data-action="open-viewer-mail-detail" data-id="${email.id}">
                     <div class="mail-avatar">${escapeHtml(avatarChar || 'U')}</div>
                     <div class="mail-content">
                         <div class="mail-from">${escapeHtml(fromRaw)}</div>
@@ -1374,10 +1414,10 @@ function renderMailboxViewer(emails) {
                     <div class="mail-meta">
                         <div class="mail-time">${formatTime(email.received_at)}</div>
                         <div class="mail-actions">
-                        <button class="action-btn" onclick="copyViewerEmailCode(event, ${email.id})" title="复制验证码">
+                        <button class="action-btn" type="button" data-action="copy-viewer-email-code" data-id="${email.id}" title="复制验证码">
                             <i class="ph-bold ph-copy"></i>
                         </button>
-                        <button class="action-btn delete" onclick="deleteViewerEmailItem(event, ${email.id})" title="删除邮件">
+                        <button class="action-btn delete" type="button" data-action="delete-viewer-email-item" data-id="${email.id}" title="删除邮件">
                             <i class="ph-bold ph-trash"></i>
                         </button>
                     </div>
@@ -1527,11 +1567,19 @@ window.deleteSingleMailbox = function(id) {
     openIOSAlert('删除邮箱', '确定要删除此邮箱吗？此操作无法撤销。', async () => {
         try {
             await adminMailboxAPI.delete(id);
-            animateDelete(document.getElementById(`email-row-${id}`), () => {
-                allMailboxes = allMailboxes.filter(m => m.id !== id);
+            const row = document.getElementById(`email-row-${id}`);
+            const finalize = () => {
                 selectedEmailIds.delete(id);
+                allMailboxes = allMailboxes.filter((m) => m.id !== id);
                 renderAllMailboxes();
-            });
+                void loadAllMailboxes();
+            };
+
+            if (row) {
+                animateDelete(row, finalize);
+            } else {
+                finalize();
+            }
             applyMailboxDeletionsToHome([targetAddress]);
             showToast('已删除');
         } catch (error) {
@@ -1550,9 +1598,11 @@ window.batchDeleteEmails = function() {
             const addresses = ids.map((id) => allMailboxes.find((m) => m.id === id)?.address).filter(Boolean);
             await adminMailboxAPI.batchDelete(ids);
             animateBatchDelete(ids, 'email-row-', () => {
-                allMailboxes = allMailboxes.filter(m => !selectedEmailIds.has(m.id));
+                const idSet = new Set(ids);
+                allMailboxes = allMailboxes.filter((m) => !idSet.has(m.id));
                 selectedEmailIds.clear();
                 renderAllMailboxes();
+                void loadAllMailboxes();
             });
             applyMailboxDeletionsToHome(addresses);
             showToast(`已删除 ${count} 个邮箱`);
@@ -1735,6 +1785,145 @@ function initEventListeners() {
         searchInput.addEventListener('input', () => {
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => filterAllEmails(searchInput.value), 300);
+        });
+    }
+
+    // 历史邮箱事件委托
+    const historyContainer = document.getElementById('historyListContainer');
+    if (historyContainer) {
+        historyContainer.addEventListener('click', (e) => {
+            const actionEl = e.target.closest('[data-action]');
+            if (!actionEl || !historyContainer.contains(actionEl)) return;
+            const action = actionEl.dataset.action;
+            if (action === 'restore-email') {
+                window.restoreEmail(actionEl.dataset.email);
+            } else if (action === 'toggle-pin') {
+                window.togglePin(parseInt(actionEl.dataset.id, 10));
+            } else if (action === 'delete-history') {
+                window.confirmDeleteHistory(parseInt(actionEl.dataset.id, 10));
+            }
+        });
+    }
+
+    // 域名选择事件委托
+    const domainOptions = document.getElementById('domainOptions');
+    if (domainOptions) {
+        domainOptions.addEventListener('click', (e) => {
+            const opt = e.target.closest('[data-action="select-domain"]');
+            if (opt) {
+                window.selectDomain(opt, opt.dataset.domain);
+            }
+        });
+    }
+
+    // 收件箱事件委托
+    const inboxContainer = document.getElementById('inboxContainer');
+    if (inboxContainer) {
+        inboxContainer.addEventListener('click', (e) => {
+            const actionEl = e.target.closest('[data-action]');
+            if (!actionEl || !inboxContainer.contains(actionEl)) return;
+            const action = actionEl.dataset.action;
+            const id = parseInt(actionEl.dataset.id || '', 10);
+            if (!Number.isFinite(id)) return;
+            if (action === 'open-mail-detail') {
+                window.openMailDetail(id);
+            } else if (action === 'copy-email-code') {
+                window.copyEmailCode(e, id);
+            } else if (action === 'delete-email-item') {
+                window.deleteEmailItem(e, id);
+            }
+        });
+    }
+
+    // 用户管理表格事件委托
+    const userTableBody = document.getElementById('userTableBody');
+    if (userTableBody) {
+        userTableBody.addEventListener('click', (e) => {
+            const actionEl = e.target.closest('[data-action]');
+            if (!actionEl || !userTableBody.contains(actionEl)) return;
+            e.stopPropagation();
+            const action = actionEl.dataset.action;
+            const userId = parseInt(actionEl.dataset.userId || '', 10);
+            const mailboxId = parseInt(actionEl.dataset.mailboxId || '', 10);
+            const address = actionEl.dataset.address || '';
+
+            if (action === 'toggle-select-user' && Number.isFinite(userId)) {
+                window.toggleSelectUser(userId);
+            } else if (action === 'toggle-send-permission' && Number.isFinite(userId)) {
+                window.toggleSendPermission(userId);
+            } else if (action === 'change-user-status' && Number.isFinite(userId)) {
+                window.changeUserStatus(userId, actionEl.value);
+            } else if (action === 'open-edit-user' && Number.isFinite(userId)) {
+                window.openEditUser(userId);
+            } else if (action === 'delete-user' && Number.isFinite(userId)) {
+                window.deleteUser(userId);
+            } else if (action === 'open-assign-modal' && Number.isFinite(userId)) {
+                window.openAssignModal(userId);
+            } else if (action === 'copy-mailbox' && address) {
+                window.copyMailboxAddress(address, e);
+            } else if (action === 'delete-sub-email' && Number.isFinite(userId) && Number.isFinite(mailboxId)) {
+                window.deleteSubEmail(userId, mailboxId);
+            } else if (action === 'toggle-expand' && Number.isFinite(userId)) {
+                window.toggleExpand(userId, e);
+            }
+        });
+
+        userTableBody.addEventListener('change', (e) => {
+            const actionEl = e.target.closest('[data-action="change-user-status"]');
+            if (actionEl) {
+                const userId = parseInt(actionEl.dataset.userId || '', 10);
+                if (Number.isFinite(userId)) {
+                    window.changeUserStatus(userId, actionEl.value);
+                }
+            }
+        });
+    }
+
+    // 所有邮箱列表事件委托
+    const emailListBody = document.getElementById('emailListBody');
+    if (emailListBody) {
+        emailListBody.addEventListener('click', (e) => {
+            const actionEl = e.target.closest('[data-action]');
+            if (!actionEl || !emailListBody.contains(actionEl)) return;
+            const action = actionEl.dataset.action;
+            const id = parseInt(actionEl.dataset.id || '', 10);
+            const address = actionEl.dataset.address || '';
+
+            if (action === 'toggle-select-email' && Number.isFinite(id)) {
+                window.toggleSelectEmail(id);
+            } else if (action === 'open-remark-modal' && Number.isFinite(id)) {
+                window.openRemarkModal(id, address);
+            } else if (action === 'open-pwd-modal' && Number.isFinite(id)) {
+                window.openPwdModal(id, address);
+            } else if (action === 'toggle-login-allowed' && Number.isFinite(id)) {
+                window.toggleLoginAllowed(id);
+            } else if (action === 'open-mailbox-viewer' && address) {
+                window.openMailboxViewer(address);
+            } else if (action === 'copy-mailbox' && address) {
+                window.copyMailboxAddress(address, e);
+            } else if (action === 'delete-single-mailbox' && Number.isFinite(id)) {
+                window.deleteSingleMailbox(id);
+            }
+        });
+    }
+
+    // 邮箱查看器事件委托
+    const mailboxViewerList = document.getElementById('mailboxViewerList');
+    if (mailboxViewerList) {
+        mailboxViewerList.addEventListener('click', (e) => {
+            const actionEl = e.target.closest('[data-action]');
+            if (!actionEl || !mailboxViewerList.contains(actionEl)) return;
+            const action = actionEl.dataset.action;
+            const id = parseInt(actionEl.dataset.id || '', 10);
+            if (!Number.isFinite(id)) return;
+
+            if (action === 'open-viewer-mail-detail') {
+                window.openViewerMailDetail(id);
+            } else if (action === 'copy-viewer-email-code') {
+                window.copyViewerEmailCode(e, id);
+            } else if (action === 'delete-viewer-email-item') {
+                window.deleteViewerEmailItem(e, id);
+            }
         });
     }
 }
