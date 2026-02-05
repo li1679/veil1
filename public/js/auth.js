@@ -47,7 +47,7 @@ export async function checkSession() {
                 username: response.username,
                 name: response.name,
                 role,
-                canSend: typeof response.can_send !== 'undefined' ? response.can_send : response.canSend,
+                canSend: Boolean(typeof response.can_send !== 'undefined' ? response.can_send : response.canSend),
                 quota: typeof response.quota !== 'undefined'
                     ? response.quota
                     : (response.mailbox_limit || response.mailboxLimit),
@@ -107,7 +107,7 @@ export async function logout() {
 
 export function canSend(user = currentUser) {
     if (!user) return false;
-    return user.canSend === true;
+    return Boolean(user.canSend);
 }
 
 // ============================================

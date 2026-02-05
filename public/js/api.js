@@ -474,7 +474,6 @@ export const userAPI = {
 export const adminMailboxAPI = {
     // 获取所有邮箱列表
     async getAllMailboxes(params = {}, requestOptions = {}) {
-        const appendCache = Boolean(params.appendCache);
         const queryParams = new URLSearchParams();
         if (params.domain) queryParams.set('domain', params.domain);
         if (params.search) queryParams.set('q', params.search);
@@ -496,18 +495,18 @@ export const adminMailboxAPI = {
         const queryString = queryParams.toString();
         const response = await request(`/api/mailboxes${queryString ? '?' + queryString : ''}`, requestOptions);
         const mailboxes = normalizeMailboxResponse(response).mailboxes.map(mapAdminMailbox);
+        const pagination = (response && !Array.isArray(response) && response.pagination)
+            ? response.pagination
+            : null;
 
-        const shouldResetCache = !appendCache && !(hasOffset && offset > 0) && !(page && page > 1);
-        if (shouldResetCache) {
-            adminMailboxCache.clear();
-        }
+        adminMailboxCache.clear();
         mailboxes.forEach((item) => {
             if (item && typeof item.id !== 'undefined') {
                 adminMailboxCache.set(normalizeId(item.id), item.address);
             }
         });
 
-        return { mailboxes };
+        return { mailboxes, pagination };
     },
 
     // 获取邮箱当前密码（管理员）

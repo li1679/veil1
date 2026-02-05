@@ -52,6 +52,9 @@
 
     <script type="module">
         import { checkSession, getRedirectUrl } from '/js/auth.js';
+        import { initTheme } from '/js/theme.js';
+
+        initTheme();
 
         async function init() {
             try {

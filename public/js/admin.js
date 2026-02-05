@@ -4,14 +4,14 @@
  */
 
 import { domainAPI, mailboxAPI, emailAPI, userAPI, adminMailboxAPI } from './api.js';
-import { requireAdmin, logout, canSend } from './auth.js';
+import { requireAdmin, logout } from './auth.js';
 import {
     showToast, copyText, openModal, closeModal, openIOSAlert,
     animateDelete, animateBatchDelete, toggleUserMenu, initCommon,
     formatTime, formatDate, extractCode, escapeHtml, sanitizeEmailHtml,
     getStorage, setStorage, removeStorage
 } from './common.js';
-import { initTheme, toggleTheme } from './theme.js';
+import { toggleTheme } from './theme.js';
 
 // ============================================
 // 全局状态
@@ -29,10 +29,18 @@ let viewerMailbox = null;
 let viewerEmails = [];
 let allMailboxesLoadController = null;
 let allMailboxesLoadSeq = 0;
+let expandedEmailDetails = new Set();
 const HISTORY_FETCH_LIMIT = 50;
 const HISTORY_MAX_PAGES = 200;
-const ALL_MAILBOX_FETCH_LIMIT = 50;
-const ALL_MAILBOX_MAX_PAGES = 200;
+const DEFAULT_ALL_MAILBOX_PAGE_SIZE = 50;
+const ALL_MAILBOX_PAGE_SIZE_OPTIONS = [20, 50, 100];
+const allMailboxesPageState = {
+    page: 1,
+    limit: DEFAULT_ALL_MAILBOX_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+    hasMore: false,
+};
 
 function getLastMailboxStorageKey() {
     const username = currentUser?.username ? String(currentUser.username) : 'unknown';
@@ -107,9 +115,6 @@ async function init() {
     currentUser = await requireAdmin();
     if (!currentUser) return;
 
-    // 初始化主题
-    initTheme();
-
     // 初始化公共功能
     initCommon();
 
@@ -128,6 +133,13 @@ async function init() {
 
     // 初始化主题切换开关
     initThemeSwitch();
+
+    const pageSizeSelect = document.getElementById('emailPageSize');
+    if (pageSizeSelect) {
+        pageSizeSelect.innerHTML = ALL_MAILBOX_PAGE_SIZE_OPTIONS.map((value) => (
+            `<option value="${value}" ${value === allMailboxesPageState.limit ? 'selected' : ''}>每页 ${value}</option>`
+        )).join('');
+    }
 
     // 渲染用户表格（预加载）
     loadUsers();
@@ -569,7 +581,7 @@ async function loadInbox() {
 
         // 更新历史记录中的邮件数量
         const historyItem = emailHistory.find(h => h.email === currentEmail);
-        if (historyItem) {
+        if (historyItem && historyItem.emailCount !== emails.length) {
             historyItem.emailCount = emails.length;
             renderHistory();
         }
@@ -841,7 +853,7 @@ function renderUserTable() {
     updateUserBatchBar();
 
     if (users.length === 0) {
-        container.innerHTML = '<div style="padding: 40px; text-align: center; color: #999;">暂无用户</div>';
+        container.innerHTML = '<div class="table-empty">暂无用户</div>';
         return;
     }
 
@@ -860,7 +872,7 @@ function renderUserTable() {
         const roleLabel = locked ? 'Super Admin' : user.role;
 
         const subEmailsHTML = subEmails.length === 0
-            ? '<div style="padding:10px; color:#999; font-size:13px; text-align:center;">暂无分配邮箱</div>'
+            ? '<div class="table-empty-inline">暂无分配邮箱</div>'
             : subEmails.map(mail => {
                 const safeAddress = escapeHtml(String(mail.address || ''));
                 const actions = selectable
@@ -879,8 +891,8 @@ function renderUserTable() {
                     <div class="email-item" id="email-item-${mail.id}">
                         <div style="display:flex; align-items:center; gap:8px;">
                             <i class="ph ph-envelope-simple" style="color:var(--accent-blue);"></i>
-                            <span style="font-weight:500; color:#333;">${safeAddress}</span>
-                            <span style="font-size:12px; color:#999; margin-left:8px;">${formatDate(mail.created_at)}</span>
+                            <span class="mail-address-text">${safeAddress}</span>
+                            <span class="mail-date-text">${formatDate(mail.created_at)}</span>
                         </div>
                         ${actions}
                     </div>
@@ -923,7 +935,7 @@ function renderUserTable() {
                 <div class="details-panel" onclick="event.stopPropagation()">
                     <div class="panel-content">
                         <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-size: 13px; font-weight: 600; color: #3C3C4399;">已分配邮箱列表 (${used})</span>
+                            <span class="subemail-title">已分配邮箱列表 (${used})</span>
                             ${assignButton}
                         </div>
                         <div id="sub-emails-${user.id}">${subEmailsHTML}</div>
@@ -932,7 +944,7 @@ function renderUserTable() {
             `;
 
         return `
-            <div class="user-block ${isSelected ? 'selected' : ''}" id="user-block-${user.id}" style="${isSelected ? 'background-color: #F2F8FF;' : ''}">
+            <div class="user-block ${isSelected ? 'selected' : ''}" id="user-block-${user.id}">
                 <div class="t-row" data-action="toggle-expand" data-user-id="${user.id}">
                     <div style="display: flex; justify-content: center;">
                         ${checkbox}
@@ -944,7 +956,7 @@ function renderUserTable() {
                     </div>
                     <div class="col-meta">
                         ${sendSwitch}
-                        <span style="font-size:11px; color:#999; margin-left:4px;">${user.can_send ? '允许' : '禁止'}</span>
+                        <span class="switch-mini-label">${user.can_send ? '允许' : '禁止'}</span>
                     </div>
                     <div class="col-meta">
                         <div class="quota-container">
@@ -1263,32 +1275,32 @@ async function loadAllMailboxes() {
         const userFilter = document.getElementById('userFilter')?.value || '';
         const search = document.getElementById('emailSearchInput')?.value || '';
 
-        let merged = [];
-        for (let page = 1; page <= ALL_MAILBOX_MAX_PAGES; page += 1) {
-            const response = await adminMailboxAPI.getAllMailboxes(
-                {
-                    domain: domainFilter,
-                    created_by: userFilter,
-                    search: search,
-                    limit: ALL_MAILBOX_FETCH_LIMIT,
-                    page,
-                    appendCache: page > 1,
-                },
-                { signal: allMailboxesLoadController.signal }
-            );
-
-            if (requestSeq !== allMailboxesLoadSeq) return;
-
-            const batch = response.mailboxes || [];
-            if (batch.length === 0) break;
-            merged = merged.concat(batch);
-            if (batch.length < ALL_MAILBOX_FETCH_LIMIT) break;
-        }
+        const response = await adminMailboxAPI.getAllMailboxes(
+            {
+                domain: domainFilter,
+                created_by: userFilter,
+                search: search,
+                limit: allMailboxesPageState.limit,
+                page: allMailboxesPageState.page,
+            },
+            { signal: allMailboxesLoadController.signal }
+        );
 
         if (requestSeq !== allMailboxesLoadSeq) return;
 
-        allMailboxes = merged;
+        allMailboxes = response.mailboxes || [];
+        syncEmailPageState(response.pagination || null);
+        if (
+            allMailboxes.length === 0
+            && allMailboxesPageState.total > 0
+            && allMailboxesPageState.page > allMailboxesPageState.totalPages
+        ) {
+            allMailboxesPageState.page = allMailboxesPageState.totalPages;
+            return loadAllMailboxes();
+        }
+        syncSelectionStateWithCurrentPage();
         renderAllMailboxes();
+        renderEmailPagination();
 
         // 填充域名筛选下拉框
         renderDomainFilter();
@@ -1315,12 +1327,13 @@ function renderAllMailboxes() {
     updateEmailBatchBar();
 
     if (allMailboxes.length === 0) {
-        container.innerHTML = '<div style="padding: 40px; text-align: center; color: #999;">无匹配邮箱</div>';
+        container.innerHTML = '<div class="table-empty">无匹配邮箱</div>';
         return;
     }
 
     container.innerHTML = allMailboxes.map(item => {
         const isSelected = selectedEmailIds.has(item.id);
+        const isExpanded = expandedEmailDetails.has(item.id);
         const isDefaultPwd = !item.password_changed;
         const pwdText = isDefaultPwd ? '默认 (同邮箱)' : '已自定义';
         const pwdClass = isDefaultPwd ? '' : 'custom';
@@ -1332,22 +1345,22 @@ function renderAllMailboxes() {
             : '<span class="remark-placeholder">添加备注</span>';
 
         return `
-            <div class="e-row" id="email-row-${item.id}" style="${isSelected ? 'background: #F2F8FF;' : ''}">
+            <div class="e-row ${isSelected ? 'selected' : ''} ${isExpanded ? 'mobile-details-open' : ''}" id="email-row-${item.id}">
                 <div style="display: flex; justify-content: center;">
                     <div class="custom-checkbox ${isSelected ? 'checked' : ''}" data-action="toggle-select-email" data-id="${item.id}"></div>
                 </div>
                 <div class="col-email">
-                    <i class="ph ph-envelope-simple" style="color: #999;"></i>
+                    <i class="ph ph-envelope-simple muted-icon"></i>
                     <span>${safeAddress}</span>
                 </div>
-                <div style="display:flex; align-items:center; min-width:0;">
+                <div class="col-created-by e-detail-field">
                     <span class="locked-hint" title="创建者不可编辑">${escapeHtml(String(item.created_by_username || '系统'))}</span>
                 </div>
-                <div class="col-remark" data-action="open-remark-modal" data-id="${item.id}" data-address="${safeAddress}">
+                <div class="col-remark e-detail-field" data-action="open-remark-modal" data-id="${item.id}" data-address="${safeAddress}">
                     <i class="ph-bold ph-note-pencil" style="font-size: 14px; opacity: 0.75;"></i>
                     <span class="remark-text">${remarkHtml}</span>
                 </div>
-                <div class="col-pass" data-action="open-pwd-modal" data-id="${item.id}" data-address="${safeAddress}">
+                <div class="col-pass e-detail-field" data-action="open-pwd-modal" data-id="${item.id}" data-address="${safeAddress}">
                     <div class="pass-dot ${pwdClass}"></div>
                     <span style="color: ${pwdColor}; font-weight: 500;">${pwdText}</span>
                     <i class="ph-bold ph-pencil-simple" style="font-size: 12px; margin-left: 4px; opacity: 0.5;"></i>
@@ -1356,12 +1369,15 @@ function renderAllMailboxes() {
                     <div class="ios-switch ${item.is_login_allowed ? 'on' : ''}" data-action="toggle-login-allowed" data-id="${item.id}">
                         <div class="ios-switch-thumb"></div>
                     </div>
-                    <span style="font-size: 12px; margin-left: 6px; width: 30px; color: #666;">
+                    <span class="login-state-text">
                         ${item.is_login_allowed ? '允许' : '禁止'}
                     </span>
                 </div>
-                <div style="color: #999; font-size: 13px;">${formatDate(item.created_at)}</div>
+                <div class="cell-date e-detail-field">${formatDate(item.created_at)}</div>
                 <div class="col-actions">
+                    <button class="icon-btn e-detail-toggle" type="button" title="${isExpanded ? '收起详情' : '展开详情'}" data-action="toggle-email-details" data-id="${item.id}">
+                        <i class="ph-bold ph-caret-down"></i>
+                    </button>
                     <button class="icon-btn" type="button" title="查看收件箱" data-action="open-mailbox-viewer" data-address="${safeAddress}">
                         <i class="ph-bold ph-envelope-open"></i>
                     </button>
@@ -1376,6 +1392,104 @@ function renderAllMailboxes() {
         `;
     }).join('');
 }
+
+function syncEmailPageState(pagination = null) {
+    const fallbackHasMore = allMailboxes.length >= allMailboxesPageState.limit;
+
+    if (pagination) {
+        const limit = Number(pagination.limit);
+        const page = Number(pagination.page);
+        const total = Number(pagination.total);
+        const totalPages = Number(pagination.totalPages);
+
+        if (Number.isFinite(limit) && limit > 0) allMailboxesPageState.limit = limit;
+        if (Number.isFinite(page) && page > 0) allMailboxesPageState.page = page;
+        if (Number.isFinite(total) && total >= 0) allMailboxesPageState.total = total;
+        allMailboxesPageState.hasMore = Boolean(pagination.hasMore);
+
+        if (Number.isFinite(totalPages) && totalPages > 0) {
+            allMailboxesPageState.totalPages = totalPages;
+        } else if (Number.isFinite(total) && total >= 0) {
+            allMailboxesPageState.totalPages = Math.max(1, Math.ceil(total / allMailboxesPageState.limit));
+        } else {
+            allMailboxesPageState.totalPages = Math.max(1, allMailboxesPageState.page + (allMailboxesPageState.hasMore ? 1 : 0));
+        }
+        return;
+    }
+
+    allMailboxesPageState.hasMore = fallbackHasMore;
+    allMailboxesPageState.totalPages = Math.max(1, allMailboxesPageState.page + (fallbackHasMore ? 1 : 0));
+    allMailboxesPageState.total = (allMailboxesPageState.page - 1) * allMailboxesPageState.limit + allMailboxes.length;
+}
+
+function syncSelectionStateWithCurrentPage() {
+    const pageIds = new Set((allMailboxes || []).map((item) => item.id));
+    selectedEmailIds.forEach((id) => {
+        if (!pageIds.has(id)) selectedEmailIds.delete(id);
+    });
+    expandedEmailDetails.forEach((id) => {
+        if (!pageIds.has(id)) expandedEmailDetails.delete(id);
+    });
+}
+
+function renderEmailPagination() {
+    const container = document.getElementById('emailPagination');
+    const infoEl = document.getElementById('emailPageInfo');
+    const prevBtn = document.getElementById('emailPrevBtn');
+    const nextBtn = document.getElementById('emailNextBtn');
+    const sizeSelect = document.getElementById('emailPageSize');
+    if (!container || !infoEl || !prevBtn || !nextBtn || !sizeSelect) return;
+
+    const totalPages = Math.max(1, Number(allMailboxesPageState.totalPages) || 1);
+    const page = Math.min(Math.max(1, Number(allMailboxesPageState.page) || 1), totalPages);
+    const hasPrev = page > 1;
+    const hasNext = page < totalPages || allMailboxesPageState.hasMore;
+
+    const totalText = Number.isFinite(Number(allMailboxesPageState.total))
+        ? `共 ${allMailboxesPageState.total} 项`
+        : `当前 ${allMailboxes.length} 项`;
+
+    infoEl.textContent = `第 ${page} / ${totalPages} 页 · ${totalText}`;
+    prevBtn.disabled = !hasPrev;
+    nextBtn.disabled = !hasNext;
+    sizeSelect.value = String(allMailboxesPageState.limit);
+
+    container.style.display = (Number(allMailboxesPageState.total) > allMailboxesPageState.limit || hasNext || hasPrev)
+        ? 'flex'
+        : 'none';
+}
+
+window.gotoEmailPage = function(direction) {
+    const totalPages = Math.max(1, Number(allMailboxesPageState.totalPages) || 1);
+    if (direction === 'prev') {
+        if (allMailboxesPageState.page <= 1) return;
+        allMailboxesPageState.page -= 1;
+    } else if (direction === 'next') {
+        const hasNext = allMailboxesPageState.page < totalPages || allMailboxesPageState.hasMore;
+        if (!hasNext) return;
+        allMailboxesPageState.page += 1;
+    } else {
+        const page = Number(direction);
+        if (!Number.isFinite(page) || page < 1) return;
+        allMailboxesPageState.page = page;
+    }
+
+    selectedEmailIds.clear();
+    expandedEmailDetails.clear();
+    loadAllMailboxes();
+};
+
+window.changeEmailPageSize = function(limitValue) {
+    const limit = Number(limitValue);
+    if (!Number.isFinite(limit) || !ALL_MAILBOX_PAGE_SIZE_OPTIONS.includes(limit)) return;
+    if (limit === allMailboxesPageState.limit) return;
+
+    allMailboxesPageState.limit = limit;
+    allMailboxesPageState.page = 1;
+    selectedEmailIds.clear();
+    expandedEmailDetails.clear();
+    loadAllMailboxes();
+};
 
 // ============================================
 // 邮箱收件箱查看器（所有邮箱二级界面）
@@ -1533,6 +1647,15 @@ window.toggleSelectEmail = function(id) {
     renderAllMailboxes();
 };
 
+window.toggleEmailDetails = function(id) {
+    if (expandedEmailDetails.has(id)) {
+        expandedEmailDetails.delete(id);
+    } else {
+        expandedEmailDetails.add(id);
+    }
+    renderAllMailboxes();
+};
+
 window.toggleSelectAllEmails = function() {
     const checkbox = document.getElementById('selectAllEmailsCheckbox');
     if (selectedEmailIds.size === allMailboxes.length && allMailboxes.length > 0) {
@@ -1586,8 +1709,12 @@ window.deleteSingleMailbox = function(id) {
             const row = document.getElementById(`email-row-${id}`);
             const finalize = () => {
                 selectedEmailIds.delete(id);
+                expandedEmailDetails.delete(id);
                 allMailboxes = allMailboxes.filter((m) => m.id !== id);
                 renderAllMailboxes();
+                if (allMailboxes.length === 0 && allMailboxesPageState.page > 1) {
+                    allMailboxesPageState.page -= 1;
+                }
                 void loadAllMailboxes();
             };
 
@@ -1616,8 +1743,12 @@ window.batchDeleteEmails = function() {
             animateBatchDelete(ids, 'email-row-', () => {
                 const idSet = new Set(ids);
                 allMailboxes = allMailboxes.filter((m) => !idSet.has(m.id));
+                expandedEmailDetails = new Set(Array.from(expandedEmailDetails).filter((id) => !idSet.has(id)));
                 selectedEmailIds.clear();
                 renderAllMailboxes();
+                if (allMailboxes.length === 0 && allMailboxesPageState.page > 1) {
+                    allMailboxesPageState.page -= 1;
+                }
                 void loadAllMailboxes();
             });
             applyMailboxDeletionsToHome(addresses);
@@ -1649,14 +1780,23 @@ window.batchToggleLoginEmails = async function(allow) {
 };
 
 window.filterAllEmails = function(query) {
+    allMailboxesPageState.page = 1;
+    selectedEmailIds.clear();
+    expandedEmailDetails.clear();
     loadAllMailboxes();
 };
 
 window.filterByDomain = function() {
+    allMailboxesPageState.page = 1;
+    selectedEmailIds.clear();
+    expandedEmailDetails.clear();
     loadAllMailboxes();
 };
 
 window.filterByUser = function() {
+    allMailboxesPageState.page = 1;
+    selectedEmailIds.clear();
+    expandedEmailDetails.clear();
     loadAllMailboxes();
 };
 
@@ -1907,6 +2047,8 @@ function initEventListeners() {
 
             if (action === 'toggle-select-email' && Number.isFinite(id)) {
                 window.toggleSelectEmail(id);
+            } else if (action === 'toggle-email-details' && Number.isFinite(id)) {
+                window.toggleEmailDetails(id);
             } else if (action === 'open-remark-modal' && Number.isFinite(id)) {
                 window.openRemarkModal(id, address);
             } else if (action === 'open-pwd-modal' && Number.isFinite(id)) {

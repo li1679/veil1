@@ -70,6 +70,9 @@
         import { startAurora, initCard3D } from '/js/aurora.js';
         import { login, checkSession, getRedirectUrl } from '/js/auth.js';
         import { showToast } from '/js/common.js';
+        import { initTheme } from '/js/theme.js';
+
+        initTheme();
 
         // 初始化背景动画和3D卡片
         startAurora();
@@ -103,6 +106,7 @@
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (loginBtn.disabled) return;
 
             const username = usernameInput.value.trim();
             const password = passwordInput.value.trim();
@@ -138,13 +142,6 @@
                 errorMsg.classList.add('hidden');
             }, 3000);
         }
-
-        // 回车提交
-        passwordInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                form.dispatchEvent(new Event('submit'));
-            }
-        });
     </script>
 </body>
 </html>

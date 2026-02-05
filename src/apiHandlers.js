@@ -1544,7 +1544,7 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
   // 历史邮箱列表（按创建时间倒序）支持分页
   if (path === '/api/mailboxes' && request.method === 'GET') {
     // 优化：默认查询更少的数据
-    const limit = Math.min(parseInt(url.searchParams.get('limit') || '10', 10), 50);
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '10', 10), 100);
     const offset = Math.max(parseInt(url.searchParams.get('offset') || '0', 10), 0);
     const q = String(url.searchParams.get('q') || '').trim().toLowerCase();
     const domain = String(url.searchParams.get('domain') || '').trim().toLowerCase();
@@ -1566,18 +1566,18 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
         
         // 构建筛选条件
         let whereConditions = [];
-        let bindParams = [adminUid || 0];
+        let filterBindParams = [];
         
         // 搜索条件
         if (q) {
           whereConditions.push('LOWER(m.address) LIKE LOWER(?)');
-          bindParams.push(like);
+          filterBindParams.push(like);
         }
         
         // 域名筛选
         if (domain) {
           whereConditions.push('LOWER(m.address) LIKE LOWER(?)');
-          bindParams.push(`%@${domain}`);
+          filterBindParams.push(`%@${domain}`);
         }
         
         // 登录权限筛选
@@ -1590,11 +1590,11 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
         // 创建者筛选
         if (createdByUserId && createdByUserId > 0) {
           whereConditions.push('m.created_by_user_id = ?');
-          bindParams.push(createdByUserId);
+          filterBindParams.push(createdByUserId);
         }
         
         const whereClause = whereConditions.length > 0 ? 'WHERE ' + whereConditions.join(' AND ') : '';
-        bindParams.push(limit, offset);
+        const listBindParams = [adminUid || 0, ...filterBindParams, limit, offset];
         
         const { results } = await db.prepare(`
           SELECT m.id, m.address, m.created_at, COALESCE(m.remark, '') AS remark, COALESCE(um.is_pinned, 0) AS is_pinned,
@@ -1607,7 +1607,18 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
           ${whereClause}
           ORDER BY is_pinned DESC, m.created_at DESC
           LIMIT ? OFFSET ?
-        `).bind(...bindParams).all();
+        `).bind(...listBindParams).all();
+
+        const { results: countRows } = await db.prepare(`
+          SELECT COUNT(1) AS total
+          FROM mailboxes m
+          LEFT JOIN users cu ON cu.id = m.created_by_user_id
+          ${whereClause}
+        `).bind(...filterBindParams).all();
+        const total = Number(countRows?.[0]?.total || 0);
+        const totalPages = Math.max(1, Math.ceil(total / Math.max(1, limit)));
+        const page = Math.floor(offset / Math.max(1, limit)) + 1;
+        const hasMore = offset + (results || []).length < total;
         // 转换为前端期望的格式
         const mailboxes = (results || []).map(r => ({
           id: r.id || 0,
@@ -1621,7 +1632,17 @@ export async function handleApiRequest(request, db, mailDomains, options = { moc
           can_login: r.can_login,
           email_count: r.email_count || 0
         }));
-        return Response.json({ mailboxes });
+        return Response.json({
+          mailboxes,
+          pagination: {
+            total,
+            limit,
+            offset,
+            page,
+            totalPages,
+            hasMore
+          }
+        });
       }
       const payload = getJwtPayload();
       let uid = Number(payload?.userId || 0);

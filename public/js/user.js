@@ -474,7 +474,7 @@ async function loadInbox() {
         renderInbox(emails);
 
         const historyItem = emailHistory.find(h => h.email === currentEmail);
-        if (historyItem) {
+        if (historyItem && historyItem.emailCount !== emails.length) {
             historyItem.emailCount = emails.length;
             renderHistory();
         }

@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Veil - 管理控制台</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link rel="stylesheet" href="/css/styles.css">
     <style>
@@ -207,7 +206,7 @@
                                 <div></div>
                             </div>
                             <div id="userTableBody">
-                                <div style="padding: 40px; text-align: center; color: #999;">加载中...</div>
+                                <div class="table-empty">加载中...</div>
                             </div>
                         </div>
 
@@ -255,9 +254,16 @@
                                  <div style="text-align: right;">操作</div>
                              </div>
                             <div id="emailListBody">
-                                <div style="padding: 40px; text-align: center; color: #999;">加载中...</div>
+                                <div class="table-empty">加载中...</div>
                             </div>
                         </div>
+                    </div>
+
+                    <div class="email-pagination" id="emailPagination">
+                        <button class="btn btn-ghost" type="button" id="emailPrevBtn" onclick="gotoEmailPage('prev')">上一页</button>
+                        <div class="email-page-info" id="emailPageInfo">第 1 / 1 页 · 共 0 项</div>
+                        <button class="btn btn-ghost" type="button" id="emailNextBtn" onclick="gotoEmailPage('next')">下一页</button>
+                        <select class="filter-select email-page-size" id="emailPageSize" onchange="changeEmailPageSize(this.value)"></select>
                     </div>
 
                     <div class="batch-bar" id="emailBatchBar">
@@ -387,7 +393,7 @@
                     <span class="input-addon">@</span>
                     <select class="form-input" id="inputInitialDomain" style="flex:1.2;"></select>
                 </div>
-                <div style="font-size:11px; color:#999; margin-top:4px;">留空则不分配初始邮箱</div>
+                <div class="hint-text">留空则不分配初始邮箱</div>
             </div>
 
             <input type="hidden" id="editUserId">
@@ -403,7 +409,7 @@
     <div class="modal-overlay" id="assignEmailModal">
         <div class="modal-card">
             <h3 style="font-size:18px; font-weight:700; margin-bottom:20px;">分配新邮箱</h3>
-            <p style="font-size:14px; color:#3C3C4399; margin-bottom:20px;">手动指定该用户的新邮箱地址。</p>
+            <p class="modal-subtext">手动指定该用户的新邮箱地址。</p>
 
             <div class="form-row">
                 <label class="form-label">邮箱地址</label>
@@ -427,21 +433,21 @@
     <div class="modal-overlay" id="passwordModal">
         <div class="modal-card" style="width: 400px;">
             <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 8px;">修改密码</h3>
-            <p style="font-size: 14px; color: #666; margin-bottom: 20px;">
+            <p class="modal-subtext">
                 当前正在修改 <span id="pwdEditEmail" style="color: var(--accent-blue); font-weight: 500;"></span> 的密码。
             </p>
 
-            <label style="font-size: 13px; font-weight: 600; color: #333;">原密码</label>
+            <label class="form-label-strong">原密码</label>
             <div class="input-group">
                 <input type="text" class="form-input" id="oldPasswordInput" readonly>
                 <button class="btn btn-ghost" style="height: 38px; border-radius: 10px; padding: 0 14px;" onclick="copyOldPassword(event)">复制</button>
             </div>
-            <div id="oldPasswordHint" style="font-size: 12px; color: #999; margin-top: 6px; display: flex; align-items: center; gap: 4px;"></div>
+            <div id="oldPasswordHint" class="hint-row"></div>
 
             <div style="height: 14px;"></div>
-            <label style="font-size: 13px; font-weight: 600; color: #333;">新密码</label>
+            <label class="form-label-strong">新密码</label>
             <input type="password" class="form-input" id="newPasswordInput" autocomplete="new-password">
-            <div style="font-size: 12px; color: #999; margin-top: 6px; display: flex; align-items: center; gap: 4px;">
+            <div class="hint-row">
                 <i class="ph-fill ph-info"></i> 默认密码通常为邮箱地址本身
             </div>
 
@@ -456,11 +462,11 @@
     <div class="modal-overlay" id="remarkModal">
         <div class="modal-card" style="width: 440px;">
             <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 8px;">编辑备注</h3>
-            <p style="font-size: 14px; color: #666; margin-bottom: 20px;">
+            <p class="modal-subtext">
                 当前邮箱：<span id="remarkEditEmail" style="color: var(--accent-blue); font-weight: 500;"></span>
             </p>
 
-            <label style="font-size: 13px; font-weight: 600; color: #333;">备注</label>
+            <label class="form-label-strong">备注</label>
             <textarea class="form-input" id="remarkInput" placeholder="最多200字，可留空清空" style="height: 110px; resize: none;"></textarea>
 
             <div class="modal-footer">

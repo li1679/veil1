@@ -129,6 +129,9 @@ body {
     background-color: #F5F5F7;
     transition: background-color 0.8s var(--ease-out);
 }
+body.has-open-modal {
+    overflow: hidden !important;
+}
 
 body.app-mode {
     background-color: #EEF0F2;
@@ -139,6 +142,18 @@ body.app-mode {
 .flex-col { display: flex; flex-direction: column; }
 .blur-bg { backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
 .hidden { display: none !important; }
+.table-empty { padding: 40px; text-align: center; color: var(--label-secondary); }
+.table-empty-inline { padding: 10px; text-align: center; color: var(--label-secondary); font-size: 13px; }
+.hint-text { font-size: 11px; color: var(--label-secondary); margin-top: 4px; }
+.hint-row { font-size: 12px; color: var(--label-secondary); margin-top: 6px; display: flex; align-items: center; gap: 4px; }
+.form-label-strong { display: block; font-size: 13px; font-weight: 600; color: var(--label-primary); margin-bottom: 6px; }
+.modal-subtext { font-size: 14px; color: var(--label-secondary); margin-bottom: 20px; }
+.mail-address-text { font-weight: 500; color: var(--label-primary); }
+.mail-date-text { font-size: 12px; color: var(--label-secondary); margin-left: 8px; }
+.switch-mini-label { font-size: 11px; color: var(--label-secondary); margin-left: 4px; }
+.muted-icon { color: var(--label-secondary); }
+.login-state-text { font-size: 12px; margin-left: 6px; width: 30px; color: var(--label-secondary); }
+.subemail-title { font-size: 13px; font-weight: 600; color: var(--label-secondary); }
 
 /* --- 图标按钮 --- */
 .icon-action {
@@ -361,6 +376,10 @@ body.app-mode #app-view {
 .history-item, .user-block, .e-row, .email-item {
     max-height: 200px;
     transition: all 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+.user-block.selected,
+.e-row.selected {
+    background-color: #F2F8FF;
 }
 
 /* ============================================
@@ -619,7 +638,7 @@ input[type=range]::-webkit-slider-thumb {
    ============================================ */
 .content-scroll { flex: 1; padding: 32px 40px; max-width: 1200px; margin: 0 auto; width: 100%; overflow-y: auto; }
 .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-.title { font-size: 28px; font-weight: 700; color: #000; }
+.title { font-size: 28px; font-weight: 700; color: var(--label-primary); }
 
 .card { background: var(--ios-card); border-radius: var(--r-card); box-shadow: var(--shadow-sm); overflow: hidden; }
 .t-header {
@@ -700,11 +719,11 @@ input[type=range]::-webkit-slider-thumb {
 .email-actions.disabled { opacity: 0.45; pointer-events: none; display: flex; align-items: center; gap: 6px; }
 .row-locked { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--label-secondary); }
 .locked-hint { font-size: 12px; color: var(--label-secondary); padding: 4px 10px; border-radius: 999px; background: #F2F2F7; }
-.role-badge { background:#F2F2F7; padding:4px 8px; border-radius:6px; font-size:12px; color:#000; display:inline-flex; align-items:center; gap:4px; }
+.role-badge { background:#F2F2F7; padding:4px 8px; border-radius:6px; font-size:12px; color:var(--label-primary); display:inline-flex; align-items:center; gap:4px; }
 .role-badge.role-super { background: rgba(0,122,255,0.12); color: var(--accent-blue); font-weight: 600; }
 
 .chevron { transition: transform 0.3s; color: #3C3C4399; }
-.user-block.expanded .chevron { transform: rotate(90deg); color: #000; }
+.user-block.expanded .chevron { transform: rotate(90deg); color: var(--label-primary); }
 
 /* ============================================
    所有邮箱页面
@@ -713,7 +732,7 @@ input[type=range]::-webkit-slider-thumb {
     padding: 32px 40px 20px 40px; display: flex; justify-content: space-between; align-items: flex-end;
     background: var(--ios-bg); z-index: 10;
 }
-.module-title h1 { font-size: 28px; font-weight: 700; color: #000; margin: 0; }
+.module-title h1 { font-size: 28px; font-weight: 700; color: var(--label-primary); margin: 0; }
 .module-title p { font-size: 14px; color: var(--label-secondary); margin-top: 4px; }
 
 .filter-row {
@@ -744,6 +763,24 @@ input[type=range]::-webkit-slider-thumb {
 .email-card {
     background: #FFFFFF; border-radius: var(--r-card);
     box-shadow: var(--shadow-card); overflow: hidden;
+}
+.email-pagination {
+    margin: 12px 40px 0;
+    display: none;
+    align-items: center;
+    gap: 10px;
+}
+.email-page-info {
+    font-size: 13px;
+    color: var(--label-secondary);
+    flex: 1;
+}
+.email-page-size {
+    width: 120px;
+}
+.email-pagination .btn:disabled {
+    opacity: 0.45;
+    pointer-events: none;
 }
 
 .e-header {
@@ -796,6 +833,9 @@ input[type=range]::-webkit-slider-thumb {
 }
 .icon-btn:hover { background: var(--overlay-light); color: var(--label-primary); }
 .icon-btn.delete:hover { background: rgba(255, 59, 48, 0.1); color: var(--system-red); }
+.e-detail-toggle { display: none; }
+.e-detail-toggle i { transition: transform 0.2s var(--ease-out); }
+.e-row.mobile-details-open .e-detail-toggle i { transform: rotate(180deg); }
 
 /* --- 复选框 --- */
 .custom-checkbox {
@@ -900,7 +940,7 @@ input[type=range]::-webkit-slider-thumb {
 .form-input:focus { border-color: var(--accent-blue); background: white; outline: none; }
 .input-group { display: flex; gap: 8px; align-items: center; }
 .input-group .form-input { flex: 1; }
-.input-addon { color: #999; padding: 0 4px; }
+.input-addon { color: var(--label-secondary); padding: 0 4px; }
 .modal-footer { margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px; }
 
 /* --- iOS 警告框 --- */
@@ -917,8 +957,8 @@ input[type=range]::-webkit-slider-thumb {
 }
 .modal-overlay.active .ios-alert-box { transform: scale(1); }
 .ios-alert-content { padding: 20px 16px; }
-.ios-alert-title { font-size: 17px; font-weight: 600; color: #000; margin-bottom: 4px; }
-.ios-alert-desc { font-size: 13px; color: #000; line-height: 1.4; }
+.ios-alert-title { font-size: 17px; font-weight: 600; color: var(--label-primary); margin-bottom: 4px; }
+.ios-alert-desc { font-size: 13px; color: var(--label-primary); line-height: 1.4; }
 .ios-alert-buttons { display: flex; border-top: 0.5px solid rgba(60, 60, 67, 0.2); }
 .ios-alert-btn {
     flex: 1; background: transparent; border: none;
@@ -1124,6 +1164,17 @@ input[type=range]::-webkit-slider-thumb {
         flex: 0 0 auto;
         overflow: visible;
     }
+    .email-pagination {
+        margin: 10px 20px 0;
+        flex-wrap: wrap;
+    }
+    .email-page-info {
+        order: -1;
+        width: 100%;
+    }
+    .email-page-size {
+        width: 100%;
+    }
     .e-header { display: none; }
     .e-row {
         display: flex; flex-direction: column; align-items: flex-start;
@@ -1131,7 +1182,23 @@ input[type=range]::-webkit-slider-thumb {
         max-height: none;
         overflow: visible;
     }
-    .e-row .col-actions { opacity: 1; transform: none; }
+    .e-row .col-actions {
+        opacity: 1;
+        transform: none;
+        width: 100%;
+        justify-content: flex-end;
+    }
+    .e-row .e-detail-field { display: none; }
+    .e-row.mobile-details-open .e-detail-field { display: flex; width: 100%; }
+    .e-row.mobile-details-open .cell-date { display: block; }
+    .e-detail-toggle {
+        display: inline-flex;
+        margin-right: auto;
+    }
+    .hover-control-group {
+        width: 100%;
+        justify-content: flex-start;
+    }
 
     .mail-item {
         grid-template-columns: 40px minmax(0, 1fr);
