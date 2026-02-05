@@ -155,8 +155,9 @@ async function sha256Hex(text) {
 }
 
 const PBKDF2_ITERATIONS_MIN = 50000;
-const PBKDF2_ITERATIONS_MAX = 500000;
-const PBKDF2_ITERATIONS = 150000;
+// Cloudflare Workers WebCrypto currently rejects PBKDF2 iterations above 100000.
+const PBKDF2_ITERATIONS_MAX = 100000;
+const PBKDF2_ITERATIONS = 100000;
 const PBKDF2_SALT_BYTES = 16;
 const PBKDF2_HASH_BYTES = 32; // 256-bit
 const PBKDF2_FORMAT_PREFIX = 'pbkdf2$sha256$';
