@@ -11,6 +11,7 @@ import {
     formatTime, formatDate, extractCode, escapeHtml,
     getStorage, setStorage, removeStorage
 } from './common.js';
+import { initTheme, toggleTheme } from './theme.js';
 
 // ============================================
 // 全局状态
@@ -100,6 +101,9 @@ async function init() {
     currentUser = await requireAdmin();
     if (!currentUser) return;
 
+    // 初始化主题
+    initTheme();
+
     // 初始化公共功能
     initCommon();
 
@@ -115,6 +119,9 @@ async function init() {
 
     // 初始化事件监听
     initEventListeners();
+
+    // 初始化主题切换开关
+    initThemeSwitch();
 
     // 渲染用户表格（预加载）
     loadUsers();
@@ -1716,7 +1723,7 @@ function initEventListeners() {
     }
 
     // 登出
-    const logoutBtn = document.querySelector('.menu-item');
+    const logoutBtn = document.getElementById('logoutMenuItem');
     if (logoutBtn) {
         logoutBtn.addEventListener('click', logout);
     }
@@ -1728,6 +1735,28 @@ function initEventListeners() {
         searchInput.addEventListener('input', () => {
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => filterAllEmails(searchInput.value), 300);
+        });
+    }
+}
+
+// ============================================
+// 主题切换
+// ============================================
+function initThemeSwitch() {
+    const themeItem = document.getElementById('themeToggleItem');
+    const themeSwitch = document.getElementById('themeSwitch');
+
+    if (themeItem && themeSwitch) {
+        const updateSwitch = () => {
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            themeSwitch.classList.toggle('on', isDark);
+        };
+
+        updateSwitch();
+        themeItem.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleTheme();
+            updateSwitch();
         });
     }
 }

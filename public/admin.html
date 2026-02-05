@@ -42,7 +42,13 @@
 
                 <div class="user-profile-container">
                     <div class="user-menu" id="userMenu">
-                        <div class="menu-item">
+                        <div class="menu-item" id="themeToggleItem" role="button" tabindex="0" aria-label="切换暗黑模式" style="color: var(--label-primary);">
+                            <div style="flex:1; display:flex; gap:8px; align-items:center;">
+                                <i class="ph-bold ph-moon"></i> 暗黑模式
+                            </div>
+                            <div class="ios-switch" id="themeSwitch"><div class="ios-switch-thumb"></div></div>
+                        </div>
+                        <div class="menu-item" id="logoutMenuItem">
                             <i class="ph-bold ph-sign-out"></i> 退出登录
                         </div>
                     </div>
