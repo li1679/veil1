@@ -16,10 +16,8 @@
 - 响应式布局，支持移动端
 - Aurora 动画登录背景
 - 深色模式（支持跟随系统偏好）
-- PWA 支持（manifest.json + sw.js，可安装到主屏幕）
+- PWA 支持
 - Dynamic Island 通知样式（iOS 风格）
-- 移动端底部导航栏
-- 空状态 UI 优化（更清晰的引导）
 
 ### 邮箱功能
 - 随机/人名/自定义前缀生成邮箱
@@ -72,7 +70,7 @@
 | JWT_TOKEN | JWT 签名密钥（用于会话 Cookie） | 是 |
 | MAILBOX_PASSWORD_KEY | 邮箱自定义密码加密密钥（用于管理员面板显示“原密码”；不填则沿用 JWT_TOKEN） | 否（但推荐） |
 | ROOT_ADMIN_TOKEN | Root 覆写令牌（外部 API 调用推荐；不填则回退用 JWT_TOKEN） | 否（但推荐） |
-| PUBLIC_API_KEY | /api/public/* 兼容层的 API Key（给 Userscript/脚本用，走 X-API-Key） | 否 |
+| PUBLIC_API_KEY | /api/public/* 兼容层的 API Key | 否 |
 | RESEND_API_KEY | Resend 发件配置 | 否 |
 | CORS_ORIGINS | 允许跨域调用的 Origin（浏览器跨域才需要） | 否 |
 | CORS_ALLOW_CREDENTIALS | 是否允许跨域携带 Cookie（true/false） | 否 |
