@@ -63,6 +63,7 @@ async function init() {
     if (!currentUser) return;
 
     initCommon();
+    inbox.bindInboxActions();
 
     mailboxAddress = currentUser.mailboxAddress;
     updateUI();

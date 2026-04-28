@@ -1,6 +1,7 @@
 import { extractEmail } from './commonUtils.js';
 import { getOrCreateMailboxId } from './database.js';
 import { extractVerificationCode } from './emailParser.js';
+import { buildEmailPreview } from './emailPreview.js';
 import { createApiContext } from './apiContext.js';
 import { handleEmailApi } from './handlers/email.js';
 import { handleMailboxApi } from './handlers/mailbox.js';
@@ -135,8 +136,7 @@ export async function handleEmailReceive(request, db, env) {
       objectKey = '';
     }
 
-    const previewBase = (text || html.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
-    const preview = String(previewBase || '').slice(0, 120);
+    const preview = buildEmailPreview({ text, html });
     let verificationCode = '';
     try {
       verificationCode = extractVerificationCode({ subject, text, html });

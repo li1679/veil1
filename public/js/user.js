@@ -413,23 +413,7 @@ function initEventListeners() {
         });
     }
 
-    const inboxContainer = document.getElementById('inboxContainer');
-    if (inboxContainer) {
-        inboxContainer.addEventListener('click', (e) => {
-            const actionEl = e.target.closest('[data-action]');
-            if (!actionEl || !inboxContainer.contains(actionEl)) return;
-            const action = actionEl.dataset.action;
-            const id = parseInt(actionEl.dataset.id || '', 10);
-            if (!Number.isFinite(id)) return;
-            if (action === 'open-mail-detail') {
-                window.openMailDetail(id);
-            } else if (action === 'copy-email-code') {
-                window.copyEmailCode(e, id);
-            } else if (action === 'delete-email-item') {
-                window.deleteEmailItem(e, id);
-            }
-        });
-    }
+    inbox.bindInboxActions();
 }
 
 // ============================================

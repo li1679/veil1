@@ -1,4 +1,6 @@
-﻿/**
+import { extractCode } from '../public/js/verification-code.js';
+
+/**
  * 解析邮件正文，提取文本和HTML内容
  * @param {string} raw - 原始邮件内容
  * @returns {object} 包含text和html属性的对象
@@ -468,8 +470,8 @@ function stripHtml(html){
 }
 
 /**
- * 从邮件主题、文本和HTML中智能提取验证码（4-8位数字）
- * 支持空格、连字符等分隔符，并识别多语言关键词
+ * 从邮件主题、文本和HTML中智能提取验证码
+ * 支持数字、字母数字、内部连字符，并识别多语言关键词
  * @param {object} params - 提取参数对象
  * @param {string} params.subject - 邮件主题，默认为空字符串
  * @param {string} params.text - 纯文本内容，默认为空字符串
@@ -480,111 +482,5 @@ export function extractVerificationCode({ subject = '', text = '', html = '' } =
   const subjectText = String(subject || '');
   const textBody = String(text || '');
   const htmlBody = stripHtml(html);
-
-  const sources = {
-    subject: subjectText,
-    body: `${textBody} ${htmlBody}`.trim()
-  };
-
-  // 允许的数字长度范围
-  const minLen = 4;
-  const maxLen = 8;
-
-  // 将匹配结果中的分隔去掉，仅保留数字并校验长度
-  function normalizeDigits(s){
-    const digits = String(s || '').replace(/\D+/g, '');
-    if (digits.length >= minLen && digits.length <= maxLen) return digits;
-    return '';
-  }
-
-  // 关键词（多语言，非捕获）
-  const kw = '(?:verification|one[-\s]?time|two[-\s]?factor|2fa|security|auth|login|confirm|code|otp|验证码|校验码|驗證碼|確認碼|認證碼|認証コード|인증코드|코드)';
-  // 代码片段：4-8 位数字，允许以常见分隔符分隔（空格、NBSP、短/长破折号、点号、中点、引号等）
-  const sepClass = "[\\u00A0\\s\-–—_.·•∙‧'’]";
-  const codeChunk = `([0-9](?:${sepClass}?[0-9]){3,7})`;
-
-  // 优先 1：subject 中 关键词 邻近 代码（双向）
-  const subjectOrdereds = [
-    new RegExp(`${kw}[^\n\r\d]{0,20}(?<!\\d)${codeChunk}(?!\\d)`, 'i'),
-    new RegExp(`(?<!\\d)${codeChunk}(?!\\d)[^\n\r\d]{0,20}${kw}`, 'i'),
-  ];
-  for (const r of subjectOrdereds){
-    const m = sources.subject.match(r);
-    if (m && m[1]){
-      const n = normalizeDigits(m[1]);
-      if (n) return n;
-    }
-  }
-
-  // 优先 2：正文中 关键词 邻近 代码（双向）
-  const bodyOrdereds = [
-    new RegExp(`${kw}[^\n\r\d]{0,30}(?<!\\d)${codeChunk}(?!\\d)`, 'i'),
-    new RegExp(`(?<!\\d)${codeChunk}(?!\\d)[^\n\r\d]{0,30}${kw}`, 'i'),
-  ];
-  for (const r of bodyOrdereds){
-    const m = sources.body.match(r);
-    if (m && m[1]){
-      const n = normalizeDigits(m[1]);
-      if (n) return n;
-    }
-  }
-
-  // 优先 3：宽松匹配，但需要更明确的验证码上下文（扩展距离范围）
-  // 适用于某些验证码邮件中关键词和数字距离较远的情况
-  const looseBodyOrdereds = [
-    new RegExp(`${kw}[^\n\r\d]{0,80}(?<!\\d)${codeChunk}(?!\\d)`, 'i'),
-    new RegExp(`(?<!\\d)${codeChunk}(?!\\d)[^\n\r\d]{0,80}${kw}`, 'i'),
-  ];
-  for (const r of looseBodyOrdereds){
-    const m = sources.body.match(r);
-    if (m && m[1]){
-      const n = normalizeDigits(m[1]);
-      // 额外过滤：排除明显的年份（2000-2099）和常见误匹配模式
-      if (n && !isLikelyNonVerificationCode(n, sources.body)) {
-        return n;
-      }
-    }
-  }
-
-  // 不再使用无关键词的兜底逻辑，避免误识别年份、地址、电话号码等
-  // 只返回有明确验证码关键词提示的数字
-  return '';
+  return extractCode(`${subjectText} ${textBody} ${htmlBody}`) || '';
 }
-
-/**
- * 判断数字是否可能不是验证码（用于过滤误匹配）
- * @param {string} digits - 提取的数字
- * @param {string} context - 上下文文本
- * @returns {boolean} 如果可能不是验证码返回true
- */
-function isLikelyNonVerificationCode(digits, context = '') {
-  if (!digits) return true;
-  
-  // 排除年份（2000-2099，常见于邮件日期、活动年份等）
-  const year = parseInt(digits, 10);
-  if (digits.length === 4 && year >= 2000 && year <= 2099) {
-    return true;
-  }
-  
-  // 排除常见的邮政编码模式（5位数字，且上下文包含地址相关词汇）
-  if (digits.length === 5) {
-    const lowerContext = context.toLowerCase();
-    if (lowerContext.includes('address') || 
-        lowerContext.includes('street') || 
-        lowerContext.includes('zip') ||
-        lowerContext.includes('postal') ||
-        /\b[a-z]{2,}\s+\d{5}\b/i.test(context)) { // 如 "CA 94114"
-      return true;
-    }
-  }
-  
-  // 排除包含在明显的地址格式中的数字（如 "1000 Sofia"）
-  const addressPattern = new RegExp(`\\b${digits}\\s+[A-Z][a-z]+(?:,|\\b)`, 'i');
-  if (addressPattern.test(context)) {
-    return true;
-  }
-  
-  return false;
-}
-
-

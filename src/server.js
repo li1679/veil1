@@ -1,8 +1,9 @@
-﻿import { initDatabase, getMailboxIdForReceive } from './database.js';
+import { initDatabase, getMailboxIdForReceive } from './database.js';
 import { handleEmailReceive } from './apiHandlers.js';
 import { extractEmail } from './commonUtils.js';
 import { forwardByLocalPart } from './emailForwarder.js';
 import { parseEmailMessage, decodeMimeHeader, extractVerificationCode } from './emailParser.js';
+import { buildEmailPreview } from './emailPreview.js';
 import { createRouter, authMiddleware, resolveAuthPayload } from './routes.js';
 import { createAssetManager } from './assetManager.js';
 import { getDatabaseWithValidation } from './dbConnectionHelper.js';
@@ -151,10 +152,7 @@ export default {
       }
 
       // 生成摘要与验证码（可选）
-      const preview = (() => {
-        const plain = textContent && textContent.trim() ? textContent : (htmlContent || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        return String(plain || '').slice(0, 120);
-      })();
+      const preview = buildEmailPreview({ text: textContent, html: htmlContent });
       let verificationCode = '';
       try {
         verificationCode = extractVerificationCode({ subject, text: textContent, html: htmlContent });

@@ -5,8 +5,9 @@
 
 import {
     showToast, copyText, openModal, closeModal,
-    formatTime, extractCode, escapeHtml
+    formatTime, extractCode, escapeHtml, sanitizeEmailHtml
 } from './common.js';
+import { htmlToPreviewText, looksLikeHtml } from './email-content.js';
 
 const POLL_INTERVAL = 5000;
 
@@ -22,6 +23,7 @@ export function createInboxController(opts) {
 
     let currentInboxEmails = [];
     let inboxPollInterval = null;
+    let inboxActionsBound = false;
 
     // === 辅助函数 ===
 
@@ -30,7 +32,8 @@ export function createInboxController(opts) {
     }
 
     function getEmailPreviewText(email) {
-        return String(email?.text || email?.preview || '').trim();
+        const preview = String(email?.text || email?.preview || '').trim();
+        return looksLikeHtml(preview) ? htmlToPreviewText(preview) : preview.replace(/\s+/g, ' ');
     }
 
     function getEmailVerificationCode(email) {
@@ -53,8 +56,15 @@ export function createInboxController(opts) {
         frame.style.height = `${height}px`;
     }
 
-    function renderMailDetailBody(detailBody, email) {
+    function getMailDetailHtml(email) {
         const rawHtml = String(email?.html || '').trim();
+        if (rawHtml) return rawHtml;
+        const rawText = String(email?.text || '').trim();
+        return looksLikeHtml(rawText) ? rawText : '';
+    }
+
+    function renderMailDetailBody(detailBody, email) {
+        const rawHtml = getMailDetailHtml(email);
         if (!rawHtml) {
             detailBody.innerHTML = `<pre>${escapeHtml(email?.text || '')}</pre>`;
             return;
@@ -69,7 +79,7 @@ export function createInboxController(opts) {
         frame.style.minHeight = '320px';
         frame.style.border = '0';
         frame.style.background = 'transparent';
-        frame.srcdoc = buildMailDetailDocument(rawHtml);
+        frame.srcdoc = buildMailDetailDocument(sanitizeEmailHtml(rawHtml));
         frame.addEventListener('load', () => {
             resizeMailFrame(frame);
             setTimeout(() => resizeMailFrame(frame), 60);
@@ -182,6 +192,31 @@ export function createInboxController(opts) {
         closeModal('mailDetailModal');
     }
 
+    function handleInboxClick(event) {
+        const container = document.getElementById('inboxContainer');
+        const actionEl = event.target.closest('[data-action]');
+        if (!container || !actionEl || !container.contains(actionEl)) return;
+
+        const action = actionEl.dataset.action;
+        const id = parseInt(actionEl.dataset.id || '', 10);
+        if (!Number.isFinite(id)) return;
+
+        if (action === 'open-mail-detail') {
+            openMailDetail(id);
+        } else if (action === 'copy-email-code') {
+            copyEmailCode(event, id);
+        } else if (action === 'delete-email-item') {
+            deleteEmailItem(event, id);
+        }
+    }
+
+    function bindInboxActions() {
+        const container = document.getElementById('inboxContainer');
+        if (!container || inboxActionsBound) return;
+        container.addEventListener('click', handleInboxClick);
+        inboxActionsBound = true;
+    }
+
     // === 轮询控制 ===
 
     function handleVisibilityChange() {
@@ -228,6 +263,7 @@ export function createInboxController(opts) {
 
     return {
         renderInbox,
+        bindInboxActions,
         startInboxPoll,
         stopInboxPoll,
         getInboxEmailById,
