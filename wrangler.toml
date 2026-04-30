@@ -33,8 +33,8 @@ binding = "MAIL_EML"
 # TIP: omit bucket_name to allow Wrangler to auto-provision an R2 bucket for this Worker.
 
 # wrangler.toml (wrangler v3.88.0^) logs
-# [observability.logs]
-# enabled = true
+[observability.logs]
+enabled = true
 
 # Cron triggers for scheduled cleanup
 [triggers]

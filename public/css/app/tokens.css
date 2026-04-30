@@ -1,0 +1,142 @@
+/* ============================================
+   Veil - 统一样式文件
+   iOS HIG 风格设计系统
+   ============================================ */
+
+/* --- 字体导入 --- */
+/* Google Fonts @import removed — using system font stack only
+   (-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Inter", sans-serif) */
+
+/* --- CSS 变量 --- */
+:root {
+    color-scheme: light;
+
+    /* 颜色系统 */
+    --ios-bg: #F2F2F7;
+    --ios-card: #FFFFFF;
+    --ios-separator: #C6C6C8;
+    --ios-separator-light: #E5E5EA;
+    --label-primary: #111114;
+    --label-secondary: #3C3C4399;
+    --label-tertiary: #3C3C434D;
+    --accent-blue: #007AFF;
+    --accent-blue-active: #0062cc;
+    --system-red: #FF3B30;
+    --system-green: #34C759;
+    --system-yellow: #FFD60A;
+
+    /* 语义表面 */
+    --surface-window: #FFFFFF;
+    --surface-sidebar: rgba(248, 248, 252, 0.88);
+    --surface-menu: rgba(255, 255, 255, 0.92);
+    --surface-subtle: #FAFAFC;
+    --surface-control: #FFFFFF;
+    --surface-control-hover: #F5F5F7;
+    --surface-input: rgba(118, 118, 128, 0.12);
+    --surface-input-focus: #FFFFFF;
+    --surface-row-hover: #F7F7FA;
+    --surface-overlay: rgba(0, 0, 0, 0.3);
+    --surface-toast: rgba(30, 30, 30, 0.8);
+    --surface-batchbar: rgba(30, 30, 30, 0.9);
+    --surface-tabbar: rgba(245, 245, 247, 0.92);
+    --surface-tabbar-border: rgba(60, 60, 67, 0.18);
+    --surface-status-active: #E1F9E8;
+    --surface-status-inactive: #E5E5EA;
+    --text-status-inactive: #3C3C4399;
+    --select-caret-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%233C3C43' fill-opacity='0.6' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+
+    /* 边框/焦点 */
+    --stroke-soft: rgba(0, 0, 0, 0.06);
+    --stroke-medium: rgba(0, 0, 0, 0.08);
+    --stroke-strong: rgba(0, 0, 0, 0.12);
+    --focus-ring: 0 0 0 2px rgba(0, 122, 255, 0.2);
+    --selection-bg: rgba(10, 132, 255, 0.12);
+
+    /* 阴影 */
+    --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+    --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08);
+    --shadow-knob: 0 2px 4px rgba(0, 0, 0, 0.15), 0 1px 1px rgba(0, 0, 0, 0.05);
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+
+    /* 圆角 */
+    --r-window: 20px;
+    --r-card: 16px;
+    --r-sm: 8px;
+    --r-md: 12px;
+
+    /* 缓动函数 */
+    --ease-out: cubic-bezier(0.25, 1, 0.5, 1);
+    --ease-spring: cubic-bezier(0.19, 1, 0.22, 1);
+    --ease-bounce: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
+
+    /* 透明度 */
+    --overlay-light: rgba(0, 0, 0, 0.05);
+    --overlay-medium: rgba(0, 0, 0, 0.08);
+}
+
+/* --- 暗黑模式变量 --- */
+[data-theme='dark'] {
+    color-scheme: dark;
+    --ios-bg: #000000;
+    --ios-card: #1C1C1E;
+    --ios-separator: #3A3A3C;
+    --ios-separator-light: #2F2F32;
+    --label-primary: #F5F5F7;
+    --label-secondary: #EBEBF599;
+    --label-tertiary: #EBEBF54D;
+    --accent-blue: #0A84FF;
+    --accent-blue-active: #409CFF;
+    --system-red: #FF453A;
+    --system-green: #32D74B;
+
+    --surface-window: #0B0B0D;
+    --surface-sidebar: rgba(22, 22, 24, 0.84);
+    --surface-menu: rgba(36, 36, 38, 0.92);
+    --surface-subtle: #252528;
+    --surface-control: #2C2C2E;
+    --surface-control-hover: #3A3A3C;
+    --surface-input: #2C2C2E;
+    --surface-input-focus: #343438;
+    --surface-row-hover: #2C2C2E;
+    --surface-overlay: rgba(0, 0, 0, 0.5);
+    --surface-toast: rgba(24, 24, 27, 0.88);
+    --surface-batchbar: rgba(22, 22, 24, 0.92);
+    --surface-tabbar: rgba(24, 24, 27, 0.92);
+    --surface-tabbar-border: rgba(255, 255, 255, 0.1);
+    --surface-status-active: rgba(50, 215, 75, 0.18);
+    --surface-status-inactive: #2C2C2E;
+    --text-status-inactive: #EBEBF599;
+    --select-caret-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23EBEBF5' fill-opacity='0.78' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+
+    --stroke-soft: rgba(255, 255, 255, 0.08);
+    --stroke-medium: rgba(255, 255, 255, 0.1);
+    --stroke-strong: rgba(255, 255, 255, 0.15);
+    --focus-ring: 0 0 0 2px rgba(10, 132, 255, 0.35);
+    --selection-bg: rgba(10, 132, 255, 0.2);
+
+    --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.38), 0 1px 2px rgba(0, 0, 0, 0.35);
+    --shadow-float: 0 20px 48px rgba(0, 0, 0, 0.55), 0 4px 18px rgba(0, 0, 0, 0.4);
+    --shadow-knob: 0 2px 8px rgba(0, 0, 0, 0.45);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+
+    --overlay-light: rgba(255, 255, 255, 0.1);
+    --overlay-medium: rgba(255, 255, 255, 0.15);
+}
+
+[data-theme='dark'] body,
+[data-theme='dark'] body.app-mode {
+    background-color: var(--ios-bg);
+}
+[data-theme='dark'] .brand-icon {
+    background: linear-gradient(135deg, #1C1C1E 0%, #2C2C2E 100%);
+    border-color: var(--stroke-soft);
+    box-shadow: none;
+}
+[data-theme='dark'] .ios-switch {
+    background: #39393D;
+}
+[data-theme='dark'] .user-block.selected,
+[data-theme='dark'] .e-row.selected {
+    background-color: var(--selection-bg) !important;
+}

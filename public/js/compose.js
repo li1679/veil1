@@ -43,34 +43,23 @@ export function createComposeController(opts) {
     }
 
     function checkComposeInput() {
-        const to = document.getElementById('toInput').value.trim();
-        const subject = document.getElementById('subjectInput').value.trim();
+        const { to, subject } = readComposeValues(hasSenderName);
         const btn = document.getElementById('sendBtn');
 
-        if (to && subject) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
+        if (to && subject) btn.classList.add('active');
+        else btn.classList.remove('active');
     }
 
     async function doSendEmail() {
-        const to = document.getElementById('toInput').value.trim();
-        const subject = document.getElementById('subjectInput').value.trim();
-        const content = document.getElementById('contentInput').value.trim();
+        const values = readComposeValues(hasSenderName);
 
-        if (!to || !subject) {
+        if (!values.to || !values.subject) {
             showToast('请填写收件人和主题');
             return;
         }
 
         try {
-            if (hasSenderName) {
-                const fromName = document.getElementById('senderNameInput').value.trim() || 'Veil';
-                await sendAPI.send(getFromAddress(), fromName, to, subject, content);
-            } else {
-                await sendAPI.send(to, subject, content);
-            }
+            await sendComposeMessage({ sendAPI, getFromAddress, hasSenderName }, values);
             closeSendModal();
             showToast('邮件已发送');
         } catch (error) {
@@ -78,10 +67,35 @@ export function createComposeController(opts) {
         }
     }
 
-    window.openSendModal = openSendModal;
-    window.closeSendModal = closeSendModal;
-    window.checkComposeInput = checkComposeInput;
-    window.doSendEmail = doSendEmail;
-
+    registerComposeGlobals({ openSendModal, closeSendModal, checkComposeInput, doSendEmail });
     return { openSendModal, closeSendModal, checkComposeInput, doSendEmail };
+}
+
+function registerComposeGlobals(handlers) {
+    window.openSendModal = handlers.openSendModal;
+    window.closeSendModal = handlers.closeSendModal;
+    window.checkComposeInput = handlers.checkComposeInput;
+    window.doSendEmail = handlers.doSendEmail;
+}
+
+function readComposeValues(hasSenderName) {
+    return {
+        fromName: hasSenderName ? (document.getElementById('senderNameInput')?.value.trim() || 'Veil') : '',
+        to: document.getElementById('toInput').value.trim(),
+        subject: document.getElementById('subjectInput').value.trim(),
+        content: document.getElementById('contentInput').value.trim(),
+    };
+}
+
+async function sendComposeMessage(controller, values) {
+    if (controller.hasSenderName) {
+        return controller.sendAPI.send(
+            controller.getFromAddress(),
+            values.fromName,
+            values.to,
+            values.subject,
+            values.content,
+        );
+    }
+    return controller.sendAPI.send(values.to, values.subject, values.content);
 }

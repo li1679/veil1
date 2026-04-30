@@ -1,0 +1,252 @@
+/* ============================================
+   移动端响应式
+   ============================================ */
+@media (max-width: 1024px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .t-header, .t-row {
+        grid-template-columns: 40px 60px 2fr 1fr 1fr 40px;
+    }
+    .t-header > div:nth-child(4),
+    .t-header > div:nth-child(5),
+    .t-header > div:nth-child(6),
+    .t-row > div:nth-child(4),
+    .t-row > div:nth-child(5),
+    .t-row > div:nth-child(6) {
+        display: none;
+    }
+}
+
+@media (max-width: 768px) {
+    .modal-overlay { padding: 0; }
+
+    .app-window {
+        width: 100%; height: 100%; border-radius: 0;
+    }
+
+    .sidebar {
+        position: fixed; left: -280px; top: 0; height: 100%; z-index: 1000;
+        transition: left 0.3s var(--ease-out);
+    }
+    .sidebar.open { left: 0; }
+
+    .sidebar-overlay {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.3); z-index: 999; opacity: 0;
+        pointer-events: none; transition: opacity 0.3s;
+    }
+    .sidebar-overlay.show { opacity: 1; pointer-events: auto; }
+
+    .mobile-header {
+        display: flex; height: 56px; padding: 0 16px;
+        align-items: center; justify-content: space-between;
+        position: sticky;
+        top: 0;
+        z-index: 30;
+        background: var(--surface-menu);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+        border-bottom: 1px solid var(--ios-separator-light);
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
+    }
+    .menu-toggle {
+        width: 40px; height: 40px; border: none; background: none;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 24px; color: var(--label-primary); cursor: pointer;
+    }
+    .mobile-header-action {
+        width: 40px; height: 40px; border: none; background: none;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 22px; color: var(--label-primary); cursor: pointer;
+        border-radius: 10px;
+        transition: background 0.2s var(--ease-out), color 0.2s var(--ease-out);
+    }
+    .mobile-header-action:hover { background: var(--overlay-light); }
+
+    [data-theme='dark'] .mobile-header {
+        background: linear-gradient(180deg, rgba(14, 14, 16, 0.95) 0%, rgba(20, 20, 22, 0.9) 100%) !important;
+        border-bottom-color: rgba(255, 255, 255, 0.12);
+        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+    [data-theme='dark'] .mobile-header-action,
+    [data-theme='dark'] .mobile-header-action i {
+        color: #F5F5F7 !important;
+    }
+    [data-theme='dark'] .mobile-header-action:hover {
+        background: rgba(255, 255, 255, 0.12);
+    }
+    [data-theme='dark'] .mobile-header .brand-icon {
+        background: linear-gradient(135deg, #1F1F22 0%, #2C2C30 100%);
+        border-color: rgba(255, 255, 255, 0.14);
+        box-shadow: 0 6px 14px rgba(10, 132, 255, 0.2);
+    }
+    [data-theme='dark'] .mobile-header .brand-text {
+        color: #F5F5F7;
+    }
+
+    /* 移动端仅保留底部导航，侧边栏隐藏 */
+    .sidebar {
+        display: none;
+    }
+    .sidebar-overlay {
+        display: none !important;
+    }
+    .menu-toggle {
+        display: none;
+    }
+
+    .mobile-tab-bar { display: flex; }
+    .main-content {
+        padding-bottom: calc(50px + env(safe-area-inset-bottom));
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .view-section {
+        height: auto;
+        overflow: visible;
+        flex: 0 0 auto;
+    }
+
+    .content-body { padding: 20px; }
+    .current-email { font-size: 28px; }
+    .actions-row { flex-wrap: wrap; gap: 8px; }
+    .btn { height: 36px; padding: 0 14px; font-size: 14px; }
+
+    .module-header { padding: 20px; flex-direction: column; align-items: flex-start; gap: 16px; }
+    .filter-row { width: 100%; flex-direction: column; }
+    .search-bar { width: 100%; }
+    .filter-select { width: 100%; }
+
+    .email-table-container {
+        padding: 0 20px 20px 20px;
+        flex: 0 0 auto;
+        overflow: visible;
+    }
+    .email-pagination {
+        margin: 10px 20px 0;
+        flex-wrap: wrap;
+    }
+    .email-page-info {
+        order: -1;
+        width: 100%;
+    }
+    .email-page-size {
+        width: 100%;
+    }
+    .e-header { display: none; }
+    .e-row {
+        display: flex; flex-direction: column; align-items: flex-start;
+        gap: 8px; padding: 16px;
+        max-height: none;
+        overflow: visible;
+    }
+    .e-row .col-actions {
+        opacity: 1;
+        transform: none;
+        width: 100%;
+        justify-content: flex-end;
+    }
+    .e-row .e-detail-field { display: none; }
+    .e-row.mobile-details-open .e-detail-field { display: flex; width: 100%; }
+    .e-row.mobile-details-open .cell-date { display: block; }
+    .e-detail-toggle {
+        display: inline-flex;
+        margin-right: auto;
+    }
+    .hover-control-group {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .mail-item {
+        grid-template-columns: 40px minmax(0, 1fr);
+        row-gap: 8px;
+        height: auto;
+    }
+    .mail-meta {
+        grid-column: 2 / -1;
+        align-items: flex-start;
+        flex-direction: row;
+        justify-content: space-between;
+        width: 100%;
+    }
+
+
+    .content-scroll { padding: 20px; }
+    .t-header { display: none; }
+    .t-row {
+        display: flex; flex-wrap: wrap; gap: 8px; padding: 16px;
+    }
+    .details-panel { padding: 0 16px 16px 16px; }
+
+    .sheet-modal { width: 100%; height: 100%; border-radius: 0; max-height: 100vh; }
+    .modal-card { width: 90%; max-width: 400px; }
+
+    .batch-bar { width: calc(100% - 40px); border-radius: 16px; padding: 12px 16px; gap: 8px; flex-wrap: wrap; }
+
+    .user-layout, .mailbox-content { padding: 20px; }
+    .user-layout { padding-top: calc(24px + env(safe-area-inset-top)); }
+    .user-header { flex-direction: column; align-items: flex-start; gap: 12px; margin-bottom: 20px; }
+    .user-info { width: 100%; flex-wrap: wrap; justify-content: space-between; gap: 10px; }
+    #logoutBtn { height: 36px; padding: 0 12px; }
+    .mailbox-header { padding: 16px 20px; }
+}
+
+@media (max-width: 480px) {
+    .current-email { font-size: 22px; }
+    .actions-row .btn span { display: none; }
+    .ios-card { padding: 16px; }
+}
+
+@media (hover: none), (pointer: coarse) {
+    /* 触屏端：行内容可能换行，避免被桌面端的 max-height 裁切 */
+    .e-row {
+        max-height: none;
+        overflow: visible;
+    }
+
+    /* 触屏端没有 hover：历史列表操作按钮保持可见 */
+    .h-actions {
+        opacity: 1;
+    }
+
+    /* 触屏端没有 hover：所有邮箱行内操作按钮保持可见 */
+    .col-actions {
+        opacity: 1;
+        transform: none;
+    }
+    .hover-control-group {
+        opacity: 1;
+    }
+
+    .mail-actions {
+        opacity: 1;
+        pointer-events: auto;
+        transform: none;
+    }
+
+    /* 触屏端没有 hover：用户管理子邮箱操作按钮保持可见 */
+    .email-actions {
+        opacity: 1;
+        pointer-events: auto;
+    }
+}
+
+
+@media (hover: none), (pointer: coarse) {
+    .action-btn,
+    .icon-btn,
+    .h-btn {
+        min-width: 36px;
+        min-height: 36px;
+    }
+    .mail-actions,
+    .h-actions,
+    .col-actions,
+    .email-actions {
+        opacity: 1;
+        pointer-events: auto;
+    }
+}

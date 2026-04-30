@@ -10,6 +10,7 @@
 
 - Base URL：`https://<你的域名>`
 - 业务接口前缀：`/api/*`
+- 健康检查：`GET /api/health`，无需登录，不返回任何 Secret 明文
 - 邮件注入回调（可选，可用 `RECEIVE_TOKEN` 保护）：`POST /receive`
 
 ---
@@ -17,6 +18,8 @@
 ## 1) 鉴权方式（外部调用建议优先看这里）
 
 项目支持以下鉴权方式（按推荐顺序）：
+
+`GET /api/health`、`POST /api/login`、`POST /api/logout`、`POST /receive` 不走 Cookie/JWT 会话校验。`/receive` 在非本地环境必须配置并携带 `RECEIVE_TOKEN`。
 
 ### A. Cookie/JWT 会话（适合浏览器登录）
 
@@ -33,15 +36,15 @@
 - `ROOT_ADMIN_TOKEN`：Root 覆盖令牌（Secret，推荐单独设置）
 - `JWT_TOKEN`：JWT 签名密钥（Secret，用于签发/校验 `iding-session`）
 
-#### 兼容旧配置（仍支持但不推荐）
+#### 安全约束
 
-- 若未设置 `ROOT_ADMIN_TOKEN`，系统会回退使用 `JWT_TOKEN` 作为 Root 覆盖令牌。
+- Root 覆盖令牌必须显式配置为 `ROOT_ADMIN_TOKEN`、`ROOT_TOKEN`、`ADMIN_API_TOKEN` 或 `ADMIN_TOKEN`
+- `JWT_TOKEN` 只用于签发和校验会话 Cookie，不再作为 Root 覆盖令牌回退值
 
 #### 令牌携带方式（任选其一）
 
 - Header（标准）：`Authorization: Bearer <ROOT_ADMIN_TOKEN>`
 - Header（自定义）：`X-Admin-Token: <ROOT_ADMIN_TOKEN>`
-- Query：`?admin_token=<ROOT_ADMIN_TOKEN>`
 
 #### 命中后鉴权载荷
 

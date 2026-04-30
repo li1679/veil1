@@ -7,52 +7,45 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/css/icons/regular.css">
     <link rel="stylesheet" href="/css/icons/bold.css">
-    <link rel="stylesheet" href="/css/icons/fill.css">
     <link rel="stylesheet" href="/css/styles.css">
-    <style>
-        body {
-            background-color: var(--ios-bg);
-            overflow-y: auto;
-        }
-    </style>
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#F2F2F7">
     <meta name="color-scheme" content="light dark">
     <script type="module" src="/js/theme.js"></script>
 </head>
-<body>
+<body class="page-scroll">
     <div class="mailbox-layout">
         <!-- 顶部栏 -->
         <div class="mailbox-header">
             <div class="user-brand">
                 <div class="brand-icon">
-                    <i class="ph ph-envelope-simple" style="font-size: 20px;"></i>
+                    <i class="ph ph-envelope-simple"></i>
                 </div>
                 <div class="brand-text">Veil</div>
             </div>
 
             <div class="mailbox-address" id="mailboxAddress">加载中...</div>
 
-            <div style="display:flex; align-items:center; gap:12px;">
+            <div class="header-actions">
                 <a href="https://github.com/li1679/veil" class="github-pill" target="_blank" rel="noopener noreferrer">
-                    <i class="ph-fill ph-github-logo"></i>
+                    <i class="ph ph-github-logo"></i>
                     <span>GitHub</span>
                 </a>
-                <button class="btn btn-ghost" onclick="handleLogout()" style="height: 36px;">
+                <button class="btn btn-ghost logout-height" onclick="handleLogout()">
                     <i class="ph ph-sign-out"></i> 退出
                 </button>
             </div>
         </div>
 
         <!-- 操作栏 -->
-        <div style="padding: 20px 40px; display: flex; gap: 12px; justify-content: center;">
+        <div class="mailbox-action-row">
             <button class="btn btn-secondary" onclick="copyMailbox()">
                 <i class="ph-bold ph-copy"></i> 复制邮箱
             </button>
             <button class="btn btn-secondary" onclick="refreshInbox()">
                 <i class="ph-bold ph-arrows-clockwise"></i> 刷新收件箱
             </button>
-            <button class="btn btn-primary" id="sendMailBtn" onclick="openSendModal()">
+            <button class="btn btn-primary send-action-btn" id="sendMailBtn" onclick="openSendModal()">
                 <i class="ph-bold ph-paper-plane-tilt"></i> 发送邮件
             </button>
         </div>
@@ -62,13 +55,10 @@
             <div class="mailbox-inbox">
                 <div class="inbox-header">
                     <div class="inbox-title"><span class="status-dot"></span> 收件箱</div>
-                    <div id="emailCount" style="font-size:13px; color:var(--label-secondary);">加载中...</div>
+                    <div id="emailCount" class="inbox-caption">加载中...</div>
                 </div>
-                <div id="inboxContainer" style="min-height: 300px;">
-                    <div class="inbox-empty">
-                        <i class="ph ph-spinner spinning"></i>
-                        <span>加载中...</span>
-                    </div>
+                <div id="inboxContainer" class="mailbox-inbox-container">
+                    <div class="state-block state-loading" aria-live="polite"><i class="ph ph-spinner spinning" aria-hidden="true"></i><span class="state-title">加载中...</span></div>
                 </div>
             </div>
         </div>
@@ -82,7 +72,7 @@
         <div class="sheet-modal">
             <div class="sheet-header">
                 <button class="sheet-btn" onclick="closeSendModal()">取消</button>
-                <div style="font-weight:600; font-size:16px;">新邮件</div>
+                <div class="sheet-title">新邮件</div>
                 <button class="sheet-btn send" id="sendBtn" onclick="doSendEmail()">发送</button>
             </div>
             <div class="sheet-body">
@@ -104,8 +94,8 @@
         <div class="sheet-modal mail-detail-modal">
             <div class="sheet-header">
                 <button class="sheet-btn" onclick="closeMailDetail()">关闭</button>
-                <div style="font-weight:600; font-size:16px;">邮件详情</div>
-                <div style="width: 50px;"></div>
+                <div class="sheet-title">邮件详情</div>
+                <div class="sheet-spacer"></div>
             </div>
             <div class="mail-detail-header">
                 <div class="mail-detail-subject" id="mailDetailSubject"></div>

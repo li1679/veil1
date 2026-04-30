@@ -1,0 +1,127 @@
+/* ============================================
+   模态框系统
+   ============================================ */
+.modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: var(--surface-overlay); backdrop-filter: blur(6px);
+    z-index: 2000; opacity: 0; visibility: hidden; transition: opacity 0.3s;
+    display: flex; align-items: center; justify-content: center;
+    overflow-y: auto; overscroll-behavior: contain;
+    padding: 12px;
+}
+.modal-overlay.active { opacity: 1; visibility: visible; }
+
+/* --- Sheet 模态框（发件/邮件详情） --- */
+.sheet-modal {
+    width: 650px; max-height: 90vh; background: var(--ios-card);
+    border-radius: 12px; box-shadow: 0 20px 40px rgba(0,0,0,0.2), inset 0 0 0 1px var(--stroke-soft);
+    display: flex; flex-direction: column; overflow: hidden;
+    transform: translateY(20px); opacity: 0; transition: all 0.3s;
+}
+.modal-overlay.active .sheet-modal { transform: translateY(0); opacity: 1; }
+.sheet-header { height: 50px; background: var(--surface-subtle); border-bottom: 1px solid var(--ios-separator-light); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; flex-shrink: 0; }
+.sheet-btn { font-size: 15px; border: none; background: none; cursor: pointer; color: var(--accent-blue); }
+.sheet-btn.send { font-weight: 600; opacity: 0.5; pointer-events: none; }
+.sheet-btn.send.active { opacity: 1; pointer-events: auto; }
+.sheet-body { padding: 0 24px; flex: 1; overflow-y: auto; }
+.compose-field { display: flex; border-bottom: 1px solid var(--ios-separator-light); padding: 12px 0; align-items: center; }
+.compose-label { width: 80px; color: var(--label-secondary); font-size: 14px; flex-shrink: 0; }
+.compose-input { flex: 1; border: none; font-size: 15px; color: var(--label-primary); background: transparent; outline: none; }
+.compose-area { width: 100%; border: none; resize: none; margin-top: 16px; font-size: 16px; min-height: 200px; color: var(--label-primary); outline: none; font-family: inherit; }
+
+/* --- 邮件详情模态框 --- */
+.mail-detail-header { padding: 18px 20px; border-bottom: 1px solid var(--ios-separator-light); background: var(--surface-subtle); }
+.mail-detail-subject { font-size: 18px; font-weight: 600; color: var(--label-primary); margin-bottom: 10px; letter-spacing: -0.2px; }
+.mail-detail-meta { display: flex; align-items: center; gap: 10px; }
+.mail-detail-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--accent-blue); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 14px; }
+.mail-detail-info { flex: 1; }
+.mail-detail-from { font-size: 14px; font-weight: 600; color: var(--label-primary); }
+.mail-detail-to { font-size: 13px; color: var(--label-secondary); }
+.mail-detail-time { font-size: 12px; color: var(--label-tertiary); }
+.mail-detail-body { padding: 20px; font-size: 14px; line-height: 1.7; color: var(--label-primary); background: var(--ios-card); }
+.mail-detail-body pre { white-space: pre-wrap; word-wrap: break-word; font-family: inherit; }
+.mail-html-fit {
+    width: 100%;
+    overflow-x: hidden;
+}
+.mail-html-sanitized { color: inherit; }
+.mail-html-sanitized img { max-width: 100%; height: auto; }
+[data-theme='dark'] .mail-html-sanitized,
+[data-theme='dark'] .mail-html-sanitized * {
+    background-color: transparent !important;
+    color: #EDEDF0 !important;
+    border-color: var(--ios-separator) !important;
+}
+[data-theme='dark'] .mail-html-sanitized a {
+    color: var(--accent-blue) !important;
+}
+.mail-detail-modal { height: auto; max-height: 80vh; }
+.mail-detail-modal .mail-detail-header { flex-shrink: 0; }
+.mail-detail-modal .mail-detail-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+}
+
+/* --- 邮箱收件箱查看器 --- */
+.mailbox-viewer-modal { width: 780px; max-height: 85vh; }
+.mailbox-viewer-header { align-items: center; }
+.viewer-title { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+.viewer-address { font-size: 12px; color: var(--label-secondary); }
+.mailbox-viewer-body { padding: 16px 20px 20px; overflow-y: auto; }
+.viewer-meta { font-size: 12px; color: var(--label-secondary); margin-bottom: 10px; }
+.mailbox-viewer-list { display: flex; flex-direction: column; }
+
+/* --- 普通模态框 --- */
+.modal-card {
+    width: 440px; background: var(--ios-card); border-radius: 16px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.2), inset 0 0 0 1px var(--stroke-soft);
+    transform: scale(0.98); transition: 0.2s; padding: 24px;
+}
+.modal-overlay.active .modal-card { transform: scale(1); }
+.form-row { margin-bottom: 16px; }
+.form-label { display: block; font-size: 13px; font-weight: 600; color: var(--label-secondary); margin-bottom: 6px; }
+.form-input {
+    width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--ios-separator-light);
+    font-size: 15px; background: var(--surface-subtle); color: var(--label-primary);
+}
+.form-input:focus {
+    border-color: var(--accent-blue);
+    background: var(--surface-input-focus);
+    box-shadow: var(--focus-ring);
+    outline: none;
+}
+.input-group { display: flex; gap: 8px; align-items: center; }
+.input-group .form-input { flex: 1; }
+.input-addon { color: var(--label-secondary); padding: 0 4px; }
+.modal-footer { margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px; }
+
+/* --- iOS 警告框 --- */
+.ios-alert-box {
+    width: 270px;
+    background-color: var(--surface-menu);
+    backdrop-filter: blur(20px);
+    border-radius: 14px;
+    box-shadow: 0 0 0 1px var(--stroke-soft), 0 20px 40px rgba(0,0,0,0.2);
+    text-align: center;
+    overflow: hidden;
+    transform: scale(1.1);
+    transition: transform 0.2s cubic-bezier(0.1, 0.9, 0.2, 1);
+}
+.modal-overlay.active .ios-alert-box { transform: scale(1); }
+.ios-alert-content { padding: 20px 16px; }
+.ios-alert-title { font-size: 17px; font-weight: 600; color: var(--label-primary); margin-bottom: 4px; }
+.ios-alert-desc { font-size: 13px; color: var(--label-primary); line-height: 1.4; }
+.ios-alert-buttons { display: flex; border-top: 0.5px solid var(--stroke-strong); }
+.ios-alert-btn {
+    flex: 1; background: transparent; border: none;
+    padding: 12px 0; font-size: 17px; cursor: pointer;
+    transition: background 0.2s;
+}
+.ios-alert-btn:active { background: rgba(0,0,0,0.05); }
+.ios-alert-btn:first-child { border-right: 0.5px solid var(--stroke-strong); color: var(--accent-blue); font-weight: 400; }
+.ios-alert-btn.destruct { color: var(--system-red); font-weight: 600; }

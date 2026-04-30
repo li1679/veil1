@@ -32,6 +32,7 @@ async function loadInbox() {
         }
     } catch (error) {
         console.error('Failed to load inbox:', error);
+        inbox.renderError(error.message || '加载邮件失败');
         showToast('加载邮件失败');
     }
 }
@@ -81,7 +82,7 @@ function updateUI() {
 
     const sendBtn = document.getElementById('sendMailBtn');
     if (sendBtn) {
-        sendBtn.style.display = canSend(currentUser) ? 'flex' : 'none';
+        sendBtn.classList.toggle('is-allowed', canSend(currentUser));
     }
 }
 

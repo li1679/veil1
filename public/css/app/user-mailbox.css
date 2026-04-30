@@ -1,0 +1,94 @@
+/* ============================================
+   Toast 提示
+   ============================================ */
+.toast {
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--surface-toast); backdrop-filter: blur(10px);
+    color: white; padding: 10px 20px; border-radius: 20px; font-size: 14px;
+    opacity: 0; pointer-events: none; transition: all 0.3s; display: flex; gap: 8px; align-items: center; z-index: 3000;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ============================================
+   普通用户页面专用样式
+   ============================================ */
+.user-layout {
+    width: 100%; height: 100%; display: flex; flex-direction: column;
+    background: var(--ios-bg); padding: 40px;
+}
+
+.user-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 32px;
+}
+
+.user-brand {
+    display: flex; align-items: center; gap: 12px;
+}
+
+.user-info {
+    display: flex; align-items: center; gap: 12px;
+}
+
+.quota-badge {
+    background: rgba(0, 122, 255, 0.1); color: var(--accent-blue);
+    padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 500;
+}
+
+.user-content {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    max-width: 1000px; margin: 0 auto; width: 100%;
+}
+
+/* ============================================
+   邮箱用户页面专用样式
+   ============================================ */
+.mailbox-layout {
+    width: 100%; height: 100%; display: flex; flex-direction: column;
+    background: var(--ios-bg);
+}
+
+.mailbox-header {
+    padding: 20px 40px; background: var(--ios-card); border-bottom: 1px solid var(--ios-separator-light);
+    display: flex; justify-content: space-between; align-items: center;
+}
+
+.mailbox-address {
+    font-size: 18px; font-weight: 600; color: var(--label-primary);
+}
+
+.mailbox-content {
+    flex: 1; padding: 40px; overflow-y: auto;
+}
+
+.mailbox-inbox {
+    background: var(--ios-card); border-radius: var(--r-card); box-shadow: var(--shadow-card);
+    overflow: hidden; width: 100%; max-width: none; margin: 0;
+}
+
+/* --- 移动端底部导航 --- */
+.mobile-tab-bar {
+    display: none;
+    position: fixed; bottom: 0; left: 0; width: 100%;
+    background: var(--surface-tabbar);
+    backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
+    border-top: 0.5px solid var(--surface-tabbar-border);
+    padding-bottom: env(safe-area-inset-bottom);
+    z-index: 1000;
+}
+
+.tab-item {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 50px; gap: 3px; color: var(--label-secondary);
+    cursor: pointer; transition: color 0.2s;
+    background: none; border: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.tab-item i { font-size: 24px; transition: transform 0.2s var(--ease-bounce); }
+.tab-item span { font-size: 10px; font-weight: 500; }
+.tab-item.active { color: var(--accent-blue); }
+.tab-item.active i { transform: scale(1.1); }
+.tab-item:active i { transform: scale(0.9); }
+.tab-item:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
+
+[role="button"][tabindex="0"]:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }

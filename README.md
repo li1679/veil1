@@ -21,6 +21,7 @@
 - 用户管理（创建 / 编辑 / 删除 / 批量操作）
 - 邮箱配额管理
 - 发件权限独立控制
+- `/api/health` 部署健康检查
 
 **管理后台**
 - 所有邮箱列表（分页 / 搜索 / 批量删除）
@@ -107,6 +108,7 @@ wrangler d1 execute veil_db --file=./d1-init.sql
 wrangler secret put ADMIN_PASSWORD
 wrangler secret put JWT_TOKEN
 wrangler secret put MAIL_DOMAIN      # 例：mail.example.com
+wrangler secret put ROOT_ADMIN_TOKEN # 外部自动化 Root 令牌
 
 # 6. 部署
 wrangler deploy
@@ -286,17 +288,20 @@ wrangler d1 execute veil_db --file=./d1-init-basic.sql
   - 过滤 CSS `expression()`、`url()`、`@import`
 - **邮箱访问控制**：用户只能访问自己关联的邮箱和邮件
 - **缓存限制**：所有内存缓存均有大小上限 + LRU 淘汰，防止 OOM
+- **敏感入口限流**：登录、收信注入、公开 API、发信和邮箱创建入口默认启用内存窗口限流，可用 `SECURITY_RATE_LIMIT_DISABLED=true` 显式关闭
 - **CORS**：可配置 Origin 白名单 + Credentials 控制
 - **Turnstile**：可选人机验证（防暴力登录）
+- **健康检查**：`GET /api/health` 输出绑定和密钥布尔状态，不暴露 secret 值
 
 ## 注意事项
 
 - 静态资源更新后请在 Cloudflare 控制台执行 **Purge Everything**
 - R2 有免费额度限制，建议通过 Cron 定期清理过期邮件
 - 生产环境务必设置强密码：`ADMIN_PASSWORD`、`JWT_TOKEN`
-- 建议单独设置 `ROOT_ADMIN_TOKEN`（与 `JWT_TOKEN` 分离）
+- Root 覆盖权限必须单独设置 `ROOT_ADMIN_TOKEN`（与 `JWT_TOKEN` 分离）
 - 如对公网开放，建议开启 Turnstile 人机验证
 - 过期清理由 Cron 自动触发（默认每 6 小时，见 `wrangler.toml`）
+- 部署和回滚步骤见 [部署运行手册](docs/deployment-runbook.md)
 
 ## Star History
 
