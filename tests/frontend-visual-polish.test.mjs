@@ -26,6 +26,15 @@ test('p8 adds brand depth to shell and primary mailbox focus', () => {
   assert.match(polish, /\.current-email\.visible/);
 });
 
+test('p8 keeps the in-app palette blue-only and wraps long mailbox addresses', () => {
+  const polish = read('public/css/app/visual-polish.css');
+  assert.doesNotMatch(polish, /violet|purple|#8E5CFF|142,\s*92,\s*255/i);
+  assert.match(polish, /--gradient-brand:\s*linear-gradient\([^;]*var\(--brand-cyan\)[^;]*\);/);
+  assert.match(polish, /\.current-email\s*\{[^}]*font-size:\s*clamp\(/s);
+  assert.match(polish, /\.current-email\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+  assert.match(polish, /\.current-email\s*\{[^}]*word-break:\s*break-word/s);
+});
+
 test('p8 improves shared surfaces, list hierarchy, and state illustrations', () => {
   const polish = read('public/css/app/visual-polish.css');
   assert.match(polish, /\.ios-card,\s*\.card,\s*\.email-card,\s*\.inbox-section,\s*\.mailbox-inbox/);

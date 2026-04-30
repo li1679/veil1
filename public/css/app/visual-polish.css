@@ -2,10 +2,9 @@
 :root {
     --brand-blue-start: #0A84FF;
     --brand-blue-end: #2F6BFF;
-    --brand-violet: #8E5CFF;
     --brand-cyan: #5AC8FA;
-    --gradient-brand: linear-gradient(135deg, var(--brand-blue-start) 0%, var(--brand-blue-end) 48%, var(--brand-violet) 100%);
-    --gradient-page: radial-gradient(circle at 18% 10%, rgba(90, 200, 250, 0.22), transparent 32%), radial-gradient(circle at 88% 4%, rgba(142, 92, 255, 0.16), transparent 28%), linear-gradient(180deg, #F7F8FF 0%, #EFF3FA 44%, var(--ios-bg) 100%);
+    --gradient-brand: linear-gradient(135deg, var(--brand-blue-start) 0%, var(--brand-blue-end) 52%, var(--brand-cyan) 100%);
+    --gradient-page: radial-gradient(circle at 18% 10%, rgba(90, 200, 250, 0.2), transparent 32%), radial-gradient(circle at 88% 4%, rgba(10, 132, 255, 0.12), transparent 28%), linear-gradient(180deg, #F7FBFF 0%, #EFF6FF 44%, var(--ios-bg) 100%);
     --gradient-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(250, 252, 255, 0.88) 100%);
     --gradient-card: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(248, 250, 255, 0.92) 100%);
     --shadow-ambient: 0 30px 80px rgba(19, 42, 95, 0.16), 0 12px 30px rgba(10, 132, 255, 0.08);
@@ -14,7 +13,7 @@
     --surface-glass-border: rgba(255, 255, 255, 0.72);
 }
 [data-theme='dark'] {
-    --gradient-page: radial-gradient(circle at 16% 10%, rgba(10, 132, 255, 0.28), transparent 30%), radial-gradient(circle at 86% 6%, rgba(142, 92, 255, 0.22), transparent 28%), linear-gradient(180deg, #080A11 0%, #0E1018 54%, #050507 100%);
+    --gradient-page: radial-gradient(circle at 16% 10%, rgba(10, 132, 255, 0.24), transparent 30%), radial-gradient(circle at 86% 6%, rgba(90, 200, 250, 0.16), transparent 28%), linear-gradient(180deg, #070A10 0%, #0D1118 54%, #050507 100%);
     --gradient-surface: linear-gradient(180deg, rgba(29, 32, 42, 0.92) 0%, rgba(18, 19, 26, 0.94) 100%);
     --gradient-card: linear-gradient(180deg, rgba(36, 38, 48, 0.9) 0%, rgba(24, 25, 32, 0.92) 100%);
     --shadow-ambient: 0 32px 90px rgba(0, 0, 0, 0.58), 0 12px 36px rgba(10, 132, 255, 0.12);
@@ -89,6 +88,7 @@ body.page-scroll {
     margin: 22px 0 38px;
     border-radius: 34px;
     isolation: isolate;
+    overflow: hidden;
 }
 .email-display-container::before {
     content: "";
@@ -96,7 +96,7 @@ body.page-scroll {
     inset: 0;
     z-index: -1;
     border-radius: inherit;
-    background: radial-gradient(circle at 24% 24%, rgba(90, 200, 250, 0.24), transparent 38%), radial-gradient(circle at 80% 18%, rgba(142, 92, 255, 0.18), transparent 34%), rgba(255, 255, 255, 0.42);
+    background: radial-gradient(circle at 24% 24%, rgba(90, 200, 250, 0.22), transparent 38%), radial-gradient(circle at 80% 18%, rgba(10, 132, 255, 0.12), transparent 34%), rgba(255, 255, 255, 0.42);
     border: 1px solid var(--surface-glass-border);
     box-shadow: 0 22px 54px rgba(19, 42, 95, 0.1);
 }
@@ -108,6 +108,13 @@ body.page-scroll {
     border-radius: 999px;
     background: rgba(10, 132, 255, 0.16);
     filter: blur(30px);
+}
+.current-email {
+    width: 100%;
+    max-width: 100%;
+    font-size: clamp(24px, 4.2vw, 42px);
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 .current-email.visible {
     background: var(--gradient-brand);
@@ -208,7 +215,7 @@ body.page-scroll {
     align-items: center;
     justify-content: center;
     margin-bottom: 8px;
-    background: linear-gradient(135deg, rgba(10, 132, 255, 0.14), rgba(142, 92, 255, 0.1));
+    background: linear-gradient(135deg, rgba(10, 132, 255, 0.14), rgba(90, 200, 250, 0.1));
     color: var(--accent-blue);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 14px 26px rgba(10, 132, 255, 0.12);
 }
