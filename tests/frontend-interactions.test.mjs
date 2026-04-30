@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 class FakeClassList {
@@ -163,4 +164,34 @@ test('compose controller blocks users without send permission', () => {
   controller.openSendModal();
   assert.equal(dom.get('toastMsg').textContent, '您没有发送邮件的权限');
   assert.equal(dom.get('sendModalOverlay').classList.contains('active'), false);
+});
+
+test('admin event listeners bind generated inbox item actions', async () => {
+  const elements = new Map();
+  const ids = [
+    'logoutMenuItem',
+    'emailSearchInput',
+    'historyListContainer',
+    'domainOptions',
+    'userTableBody',
+    'emailListBody',
+    'mailboxViewerList',
+  ];
+  for (const id of ids) elements.set(id, new FakeElement(id));
+  const profile = new FakeElement('profile');
+  globalThis.document = {
+    getElementById: (id) => elements.get(id) || null,
+    querySelector: (selector) => selector === '.user-profile' ? profile : null,
+  };
+
+  let inboxBound = 0;
+  const { initAdminEventListeners } = await import('../public/js/admin-events.js');
+  initAdminEventListeners({ logout() {}, inbox: { bindInboxActions: () => { inboxBound += 1; } } });
+
+  assert.equal(inboxBound, 1);
+});
+
+test('admin boot passes inbox controller to event listeners', () => {
+  const source = readFileSync(new URL('../public/js/admin.js', import.meta.url), 'utf8');
+  assert.match(source, /initAdminEventListeners\(\{\s*logout,\s*inbox\s*\}\)/);
 });

@@ -1,6 +1,6 @@
 import { toggleUserMenu } from './common.js';
 
-export function initAdminEventListeners({ logout }) {
+export function initAdminEventListeners({ logout, inbox }) {
     bindUserMenu(logout);
     bindMailboxSearch();
     bindHistoryList();
@@ -8,6 +8,7 @@ export function initAdminEventListeners({ logout }) {
     bindUserTable();
     bindMailboxTable();
     bindMailboxViewer();
+    inbox.bindInboxActions();
 }
 
 function bindUserMenu(logout) {

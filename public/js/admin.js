@@ -76,7 +76,7 @@ async function init() {
     applyUserManagementAccessUI(state);
     await domainSelector.loadDomains();
     await home.loadHistory();
-    initAdminEventListeners({ logout });
+    initAdminEventListeners({ logout, inbox });
     initThemeSwitch();
     initEmailPageSizeSelect(state);
     users.loadUsers();
