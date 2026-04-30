@@ -14,22 +14,23 @@ test('p8 visual polish is isolated behind the stable stylesheet entrypoint', () 
   assert.ok(polish.split(/\r?\n/).length <= 300, 'visual-polish.css exceeds 300 lines');
 });
 
-test('p8 adds brand depth to shell and primary mailbox focus', () => {
+test('p8 keeps in-app visual polish muted and away from the login page', () => {
   const polish = read('public/css/app/visual-polish.css');
-  assert.match(polish, /--gradient-page:/);
-  assert.match(polish, /--gradient-brand:/);
+  assert.match(polish, /--app-accent-muted:/);
+  assert.match(polish, /--app-surface-muted:/);
   assert.match(polish, /--shadow-ambient:/);
   assert.match(polish, /body\.app-mode,\s*body\.page-scroll/);
   assert.match(polish, /\.app-window/);
   assert.match(polish, /\.brand-icon/);
-  assert.match(polish, /\.email-display-container::before/);
-  assert.match(polish, /\.current-email\.visible/);
+  assert.doesNotMatch(polish, /\.apple-btn/);
 });
 
-test('p8 keeps the in-app palette blue-only and wraps long mailbox addresses', () => {
+test('p8 rejects vivid app colors, purple, and the new mailbox frame', () => {
   const polish = read('public/css/app/visual-polish.css');
   assert.doesNotMatch(polish, /violet|purple|#8E5CFF|142,\s*92,\s*255/i);
-  assert.match(polish, /--gradient-brand:\s*linear-gradient\([^;]*var\(--brand-cyan\)[^;]*\);/);
+  assert.doesNotMatch(polish, /#0A84FF|#007AFF|#2F6BFF|#5AC8FA|gradient-brand|brand-cyan|brand-blue/i);
+  assert.doesNotMatch(polish, /\.email-display-container::before|\.email-display-container::after/);
+  assert.doesNotMatch(polish, /-webkit-text-fill-color:\s*transparent/);
   assert.match(polish, /\.current-email\s*\{[^}]*font-size:\s*clamp\(/s);
   assert.match(polish, /\.current-email\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(polish, /\.current-email\s*\{[^}]*word-break:\s*break-word/s);
@@ -40,7 +41,6 @@ test('p8 improves shared surfaces, list hierarchy, and state illustrations', () 
   assert.match(polish, /\.ios-card,\s*\.card,\s*\.email-card,\s*\.inbox-section,\s*\.mailbox-inbox/);
   assert.match(polish, /\.history-item:hover,\s*\.mail-item:hover,\s*\.t-row:hover,\s*\.e-row:hover,\s*\.email-item:hover/);
   assert.match(polish, /\.state-block i/);
-  assert.match(polish, /\.status-dot::after/);
   assert.match(polish, /\.quota-badge/);
 });
 
