@@ -55,6 +55,13 @@ test('static html keeps visual styling in css and does not load the fill icon fo
   }
 });
 
+test('mobile admin header centers compact brand inside the top bar', () => {
+  const responsive = read('public/css/app/responsive.css');
+  assert.match(responsive, /@media \(max-width: 768px\)[\s\S]*\.mobile-header\s+\.brand-compact\s*\{[^}]*margin:\s*0\s*;/);
+  assert.match(responsive, /@media \(max-width: 768px\)[\s\S]*\.mobile-header\s+\.brand-compact\s*\{[^}]*padding-left:\s*0\s*;/);
+  assert.match(responsive, /@media \(max-width: 768px\)[\s\S]*\.mobile-header\s+\.brand-compact\s*\{[^}]*align-items:\s*center\s*;/);
+});
+
 test('ui state renderer escapes content and exposes a consistent state block', async () => {
   const { renderUiState } = await import('../public/js/ui-state.js');
   const html = renderUiState({ icon: 'ph ph-tray', title: '<暂无>', description: '每 5 秒自动刷新', tone: 'empty' });

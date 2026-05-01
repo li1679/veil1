@@ -51,6 +51,11 @@
         border-bottom: 1px solid var(--ios-separator-light);
         box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
     }
+    .mobile-header .brand-compact {
+        margin: 0;
+        padding-left: 0;
+        align-items: center;
+    }
     .menu-toggle {
         width: 40px; height: 40px; border: none; background: none;
         display: flex; align-items: center; justify-content: center;
