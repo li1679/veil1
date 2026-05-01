@@ -23,7 +23,7 @@ export async function handleEmailEvent(message, env, ctx) {
     const parsedRaw = await readParsedRawEmail(message);
     if (!parsedRaw) return;
     const subject = parsedRaw.subject || delivery.subject;
-    const objectKey = await storeRawEmail(env, delivery.mailbox, parsedRaw.rawBuffer);
+    const objectKey = await tryStoreRawEmail(env, delivery.mailbox, parsedRaw.rawBuffer);
     await insertEmailMessage(db, buildEmailRow(message, delivery, parsedRaw, subject, mailboxId, objectKey));
   } catch (error) {
     console.error('Email event handling error:', error);
@@ -91,6 +91,15 @@ async function readParsedRawEmail(message) {
 async function storeRawEmail(env, mailbox, rawBuffer) {
   if (!rawBuffer) throw new Error('Email raw content is required');
   return putEmlObject(env.MAIL_EML, { mailbox, body: new Uint8Array(rawBuffer) });
+}
+
+async function tryStoreRawEmail(env, mailbox, rawBuffer) {
+  try {
+    return await storeRawEmail(env, mailbox, rawBuffer);
+  } catch (error) {
+    console.error('Raw EML archive storage failed; storing message metadata only:', error);
+    return '';
+  }
 }
 
 function buildEmailRow(message, delivery, parsedRaw, subject, mailboxId, objectKey) {
