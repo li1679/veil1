@@ -1,4 +1,4 @@
-import { handleCreate, handleGenerate } from './mailboxCreate.js';
+import { handleCreate, handleGenerate, handleGenerateBulk } from './mailboxCreate.js';
 import { handleListMailboxes } from './mailboxList.js';
 import {
   handleBatchToggleLogin,
@@ -22,6 +22,7 @@ export async function handleMailboxApi(ctx, body) {
     return Response.json({ domains: getDomains(ctx) });
   }
   if (path === '/api/generate' && request.method === 'POST') return handleGenerate(ctx, body);
+  if (path === '/api/generate-bulk' && request.method === 'POST') return handleGenerateBulk(ctx, body);
   if (path === '/api/create' && request.method === 'POST') return handleCreate(ctx, body);
   if (path === '/api/mailboxes' && request.method === 'GET') return handleListMailboxes(ctx);
   if (path === '/api/mailboxes/password' && request.method === 'GET') return handleGetMailboxPassword(ctx);

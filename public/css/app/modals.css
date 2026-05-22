@@ -125,3 +125,13 @@
 .ios-alert-btn:active { background: rgba(0,0,0,0.05); }
 .ios-alert-btn:first-child { border-right: 0.5px solid var(--stroke-strong); color: var(--accent-blue); font-weight: 400; }
 .ios-alert-btn.destruct { color: var(--system-red); font-weight: 600; }
+
+.bulk-result-summary { margin-bottom: 12px; }
+.bulk-result-list { max-height: 50vh; overflow: auto; }
+.bulk-result-failed { margin-top: 12px; color: var(--system-red); }
+.bulk-result-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 4px; border-bottom: 0.5px solid var(--stroke-strong); cursor: default; }
+.bulk-result-row:last-child { border-bottom: none; }
+.bulk-result-main { display: flex; align-items: baseline; gap: 8px; flex: 1; min-width: 0; }
+.bulk-result-email { font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 13px; color: var(--label-primary); word-break: break-all; }
+.bulk-result-expires { font-size: 11px; color: var(--label-secondary); }
+.bulk-result-copy { flex-shrink: 0; padding: 4px 8px; }

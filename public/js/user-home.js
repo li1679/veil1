@@ -1,5 +1,6 @@
 import { LIST_FETCH_LIMIT, MAX_LIST_FETCH_PAGES, getLastMailboxStorageKey } from './user-state.js';
 import { renderHistoryEmpty, renderHistoryItem } from './history-renderer.js';
+import { showBulkResult } from './bulk-result-modal.js';
 
 export const createUserHomeController = ({ state, deps, domainSelector, inbox, loadInbox, refreshQuota }) => {
     const { mailboxAPI, emailAPI, showToast, copyText, openIOSAlert, animateDelete, formatTime, getStorage, setStorage, removeStorage, updateUserInfo } = deps;
@@ -17,6 +18,12 @@ export const createUserHomeController = ({ state, deps, domainSelector, inbox, l
     async function generateEmail() {
         await refreshQuota();
         if (quotaExhausted(state.currentUser)) return showToast('邮箱配额已用完');
+        const count = domainSelector.getGenerateCount ? domainSelector.getGenerateCount() : 1;
+        if (count > 1) return generateEmailsBulk(count);
+        return generateEmailSingle();
+    }
+
+    async function generateEmailSingle() {
         try {
             const response = await createMailbox(mailboxAPI, domainSelector, state.selectedExpiry, showToast);
             if (!response?.address) return;
@@ -29,6 +36,37 @@ export const createUserHomeController = ({ state, deps, domainSelector, inbox, l
         } catch (error) {
             console.error('Generate failed:', error);
             showToast(error.message || '生成失败');
+        }
+    }
+
+    async function generateEmailsBulk(count) {
+        const prefixMode = domainSelector.getPrefixMode();
+        if (prefixMode === 'custom') {
+            showToast('自定义前缀不支持批量生成');
+            return;
+        }
+        try {
+            const result = await mailboxAPI.generateBulk({
+                domain: domainSelector.getSelectedDomain(),
+                prefixMode,
+                length: domainSelector.getPrefixLength(),
+                expiry: state.selectedExpiry,
+                count,
+                randomDomain: domainSelector.isRandomDomain ? domainSelector.isRandomDomain() : false,
+            });
+            const created = Array.isArray(result?.created) ? result.created : [];
+            created.forEach((item) => { if (item?.address) addToHistory(item.address); });
+            if (created.length > 0) {
+                const first = created[0].address;
+                setCurrentEmail(first);
+                inbox.startInboxPoll();
+            }
+            showBulkResult(result);
+            showToast(`已生成 ${created.length} 个，失败 ${result?.failedCount ?? 0} 个`);
+            refreshQuota();
+        } catch (error) {
+            console.error('Bulk generate failed:', error);
+            showToast(error.message || '批量生成失败');
         }
     }
 

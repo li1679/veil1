@@ -21,6 +21,20 @@ export const mailboxAPI = {
         });
     },
 
+    async generateBulk({ domain, prefixMode = 'random', length = 12, expiry = '24h', count = 1, randomDomain = false } = {}) {
+        return request('/api/generate-bulk', {
+            method: 'POST',
+            body: JSON.stringify({
+                domain,
+                prefix_mode: prefixMode,
+                length,
+                expiry,
+                count,
+                random_domain: randomDomain,
+            }),
+        });
+    },
+
     async create(prefix, domain, expiry = '24h') {
         return request('/api/create', {
             method: 'POST',

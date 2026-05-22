@@ -8,6 +8,7 @@ export function createDomainSelector(opts) {
         randomDomainSuffix: false,
         prefixMode: 'random',
         prefixLength: 12,
+        generateCount: 1,
     };
     const context = { state, updateRandomDomainUI: () => updateRandomDomainUI(state) };
     registerDomainSelectorGlobals(context);
@@ -18,7 +19,14 @@ export function createDomainSelector(opts) {
         getDomainForGeneration: () => getDomainForGeneration(state),
         getPrefixMode: () => state.prefixMode,
         getPrefixLength: () => state.prefixLength,
+        getGenerateCount: () => clampGenerateCount(state.generateCount),
+        isRandomDomain: () => Boolean(state.randomDomainSuffix),
     };
+}
+
+function clampGenerateCount(value) {
+    const n = Math.floor(Number(value) || 1);
+    return Math.max(1, Math.min(100, n));
 }
 
 async function loadDomains(domainAPI, state) {

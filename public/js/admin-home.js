@@ -1,6 +1,7 @@
 import { HISTORY_FETCH_LIMIT, HISTORY_MAX_PAGES } from './admin-state.js';
 import { getLastMailboxStorageKey, normalizeEmailAddress } from './admin-utils.js';
 import { renderHistoryEmpty, renderHistoryItem } from './history-renderer.js';
+import { showBulkResult } from './bulk-result-modal.js';
 
 export function createAdminHomeController(args) {
     const ctx = { ...args };
@@ -45,6 +46,8 @@ function closeViewerAfterDeletion(ctx) {
 
 async function generateEmail(ctx) {
     const { mailboxAPI, showToast } = ctx.deps;
+    const count = ctx.domainSelector.getGenerateCount ? ctx.domainSelector.getGenerateCount() : 1;
+    if (count > 1) return generateEmailsBulk(ctx, count);
     try {
         const response = await createMailboxFromCurrentForm(mailboxAPI, ctx.domainSelector, ctx.state.selectedExpiry, showToast);
         if (!response?.address) return;
@@ -55,6 +58,37 @@ async function generateEmail(ctx) {
     } catch (error) {
         console.error('Generate failed:', error);
         showToast(error.message || '生成失败');
+    }
+}
+
+async function generateEmailsBulk(ctx, count) {
+    const { mailboxAPI, showToast } = ctx.deps;
+    const prefixMode = ctx.domainSelector.getPrefixMode();
+    if (prefixMode === 'custom') {
+        showToast('自定义前缀不支持批量生成');
+        return;
+    }
+    try {
+        const result = await mailboxAPI.generateBulk({
+            domain: ctx.domainSelector.getSelectedDomain(),
+            prefixMode,
+            length: ctx.domainSelector.getPrefixLength(),
+            expiry: ctx.state.selectedExpiry,
+            count,
+            randomDomain: ctx.domainSelector.isRandomDomain ? ctx.domainSelector.isRandomDomain() : false,
+        });
+        const created = Array.isArray(result?.created) ? result.created : [];
+        created.forEach((item) => { if (item?.address) addToHistory(ctx, item.address); });
+        if (created.length > 0) {
+            const firstAddress = created[0].address;
+            setCurrentEmail(ctx, firstAddress);
+            ctx.inbox.startInboxPoll();
+        }
+        showBulkResult(result);
+        showToast(`已生成 ${created.length} 个，失败 ${result?.failedCount ?? 0} 个`);
+    } catch (error) {
+        console.error('Bulk generate failed:', error);
+        showToast(error.message || '批量生成失败');
     }
 }
 

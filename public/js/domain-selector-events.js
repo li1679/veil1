@@ -4,6 +4,7 @@ export function registerDomainSelectorGlobals(context) {
     window.toggleRandomDomain = () => toggleRandomDomain(context);
     window.setPrefixMode = (btn, mode, index) => setPrefixMode(context, btn, mode, index);
     window.updateLengthLabel = (val) => updateLengthLabel(context, val);
+    window.updateGenerateCount = (val) => updateGenerateCount(context, val);
     document.addEventListener('click', closeDomainDropdownOnOutsideClick);
 }
 
@@ -51,6 +52,15 @@ function syncPrefixModeInputs(mode) {
 function updateLengthLabel(context, val) {
     context.state.prefixLength = parseInt(val);
     document.getElementById('lengthDisplay').textContent = val;
+}
+
+function updateGenerateCount(context, val) {
+    const parsed = Math.max(1, Math.min(100, Math.floor(Number(val) || 1)));
+    context.state.generateCount = parsed;
+    const input = document.getElementById('generateCountInput');
+    if (input && Number(input.value) !== parsed) input.value = String(parsed);
+    const display = document.getElementById('generateCountDisplay');
+    if (display) display.textContent = String(parsed);
 }
 
 function closeDomainDropdownOnOutsideClick(event) {

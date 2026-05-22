@@ -107,6 +107,14 @@
                             <input type="range" id="lengthSlider" min="4" max="20" value="12" oninput="updateLengthLabel(this.value)">
                         </div>
 
+                        <div id="bulkCountSection" class="slider-container">
+                            <div class="slider-header">
+                                <span>数量</span>
+                                <span id="generateCountDisplay" class="text-accent">1</span>
+                            </div>
+                            <input type="range" id="generateCountInput" min="1" max="50" value="1" oninput="updateGenerateCount(this.value)" aria-label="批量生成数量">
+                        </div>
+
                         <button class="btn btn-primary generate-btn" onclick="generateEmail()">
                             立即生成
                         </button>
@@ -201,6 +209,22 @@
             <div class="ios-alert-buttons">
                 <button class="ios-alert-btn cancel">取消</button>
                 <button id="iosAlertConfirmBtn" class="ios-alert-btn destruct">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 批量生成结果弹窗 -->
+    <div class="modal-overlay" id="bulkResultModal">
+        <div class="sheet-modal">
+            <div class="sheet-header">
+                <button class="sheet-btn" onclick="closeBulkResult()">关闭</button>
+                <div class="sheet-title">批量生成结果</div>
+                <button class="sheet-btn send" onclick="copyBulkResult()">复制全部</button>
+            </div>
+            <div class="sheet-body">
+                <div id="bulkResultSummary" class="muted-caption bulk-result-summary"></div>
+                <div id="bulkResultList" class="history-list bulk-result-list" role="list"></div>
+                <div id="bulkResultFailed" class="muted-caption bulk-result-failed"></div>
             </div>
         </div>
     </div>

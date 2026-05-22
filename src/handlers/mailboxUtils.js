@@ -4,6 +4,9 @@ export const MAX_REMARK_LENGTH = 200;
 export const MIN_PASSWORD_LENGTH = 6;
 export const MAX_PASSWORD_LENGTH = 128;
 
+export const MAX_BULK_GENERATE_COUNT_USER = 50;
+export const MAX_BULK_GENERATE_COUNT_ADMIN = 100;
+
 export function getDomains(ctx) {
   if (ctx.isMock) return ctx.mockDomains;
   if (Array.isArray(ctx.mailDomains)) return ctx.mailDomains;
@@ -19,9 +22,16 @@ export function resolveExpiresAt(expiry) {
 }
 
 export function chooseMailboxDomain(payload, domains) {
+  if (isRandomDomainRequested(payload) && Array.isArray(domains) && domains.length > 0) {
+    return domains[Math.floor(Math.random() * domains.length)];
+  }
   if (payload.domain && domains.includes(payload.domain)) return payload.domain;
   const domainIndex = Math.max(0, Math.min(domains.length - 1, Number(payload.domainIndex || 0)));
   return domains[domainIndex] || domains[0];
+}
+
+function isRandomDomainRequested(payload) {
+  return Boolean(payload?.random_domain ?? payload?.randomDomain);
 }
 
 export function normalizeLocalPart(payload) {

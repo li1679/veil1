@@ -4,6 +4,8 @@ import { generateHumanNamePrefix } from '../nameGenerator.js';
 import {
   chooseMailboxDomain,
   getDomains,
+  MAX_BULK_GENERATE_COUNT_ADMIN,
+  MAX_BULK_GENERATE_COUNT_USER,
   normalizeLocalPart,
   resolveExpiresAt,
   validateLocalPart
@@ -13,8 +15,7 @@ export async function handleGenerate(ctx, body) {
   try {
     const payload = body ?? await ctx.readJsonBody();
     const domains = getDomains(ctx);
-    const domain = String(payload.domain || '').trim();
-    const chosenDomain = domains.includes(domain) ? domain : domains[0];
+    const chosenDomain = chooseMailboxDomain(payload, domains);
     const prefix = buildGeneratedPrefix(payload);
     const email = `${prefix}@${chosenDomain}`;
 
@@ -27,8 +28,114 @@ export async function handleGenerate(ctx, body) {
   }
 }
 
+export async function handleGenerateBulk(ctx, body) {
+  try {
+    const payload = body ?? await ctx.readJsonBody();
+    const validation = validateBulkPayload(payload);
+    if (validation) return validation;
+
+    const userId = ctx.isMock ? 0 : await ctx.resolveAdminUserId();
+    const maxCount = await resolveBulkMaxCount(ctx, userId);
+    const requested = Number(payload.count || 1);
+    const count = Math.max(1, Math.min(maxCount, Math.floor(requested) || 1));
+
+    const domains = getDomains(ctx);
+    const expiresAt = resolveExpiresAt(payload.expiry);
+    const result = await runBulkGenerate(ctx, { payload, domains, expiresAt, count, userId });
+
+    return Response.json(result);
+  } catch (e) {
+    return new Response(String(e?.message || '批量生成失败'), { status: 400 });
+  }
+}
+
+function validateBulkPayload(payload) {
+  const prefixMode = resolvePrefixMode(payload);
+  if (prefixMode === 'custom') {
+    return new Response('自定义前缀模式不支持批量生成', { status: 400 });
+  }
+  const requested = Number(payload?.count);
+  if (!Number.isFinite(requested) || requested < 1) {
+    return new Response('数量参数无效，必须为正整数', { status: 400 });
+  }
+  return null;
+}
+
+async function resolveBulkMaxCount(ctx, userId) {
+  if (ctx.isMock) return MAX_BULK_GENERATE_COUNT_ADMIN;
+  if (await isAdminLikeContext(ctx, userId)) return MAX_BULK_GENERATE_COUNT_ADMIN;
+  return MAX_BULK_GENERATE_COUNT_USER;
+}
+
+async function isAdminLikeContext(ctx, userId) {
+  try {
+    if (typeof ctx.isStrictAdmin === 'function' && ctx.isStrictAdmin()) return true;
+  } catch (_) { /* ignore */ }
+  if (!userId) return false;
+  try {
+    const { results } = await ctx.db.prepare('SELECT role FROM users WHERE id = ? LIMIT 1').bind(userId).all();
+    return String(results?.[0]?.role || '').toLowerCase() === 'admin';
+  } catch (_) {
+    return false;
+  }
+}
+
+async function runBulkGenerate(ctx, { payload, domains, expiresAt, count, userId }) {
+  const created = [];
+  const failed = [];
+  let quotaExhausted = false;
+
+  for (let index = 0; index < count; index += 1) {
+    if (quotaExhausted) {
+      failed.push({ index, reason: '已达到邮箱上限' });
+      continue;
+    }
+    const email = buildBulkEmailAddress(payload, domains);
+    try {
+      if (!ctx.isMock) {
+        await persistBulkMailbox(ctx, email, expiresAt, userId);
+      }
+      created.push(formatBulkSuccess(email, expiresAt));
+    } catch (e) {
+      const message = String(e?.message || '生成失败');
+      failed.push({ index, reason: message, address: email });
+      if (message.includes('已达到邮箱上限')) quotaExhausted = true;
+    }
+  }
+
+  return {
+    total: count,
+    successCount: created.length,
+    failedCount: failed.length,
+    created,
+    failed
+  };
+}
+
+function buildBulkEmailAddress(payload, domains) {
+  const prefix = buildGeneratedPrefix(payload);
+  const domain = chooseMailboxDomain(payload, domains);
+  return `${prefix}@${domain}`;
+}
+
+async function persistBulkMailbox(ctx, email, expiresAt, userId) {
+  if (userId) {
+    await assignMailboxToUser(ctx.db, { userId, address: email, expiresAt });
+    return;
+  }
+  await getOrCreateMailboxId(ctx.db, email, { expiresAt });
+}
+
+function formatBulkSuccess(email, expiresAt) {
+  return expiresAt ? { address: email, expires: expiresAt } : { address: email, expires: null };
+}
+
+function resolvePrefixMode(payload) {
+  return String(payload?.prefix_mode ?? payload?.prefixMode ?? 'random').trim();
+}
+
 function buildGeneratedPrefix(payload) {
-  const prefixMode = String(payload.prefix_mode || 'random').trim();
+  const prefixMode = resolvePrefixMode(payload);
   const lengthParam = Number(payload.length || 12);
   return prefixMode === 'name'
     ? generateHumanNamePrefix(lengthParam)
