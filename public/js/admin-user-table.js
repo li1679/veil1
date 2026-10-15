@@ -5,6 +5,13 @@ export function renderUserTableView({ state, deps, canManageUsers, isLockedUser,
     const container = document.getElementById('userTableBody');
     if (!container) return;
     updateUserBatchBar();
+    const selectable = state.users.filter((user) => !isLockedUser(user));
+    const all = document.getElementById('selectAllUsersCheckbox');
+    if (all) {
+        const selected = selectable.filter((user) => state.selectedUserIds.has(user.id)).length;
+        all.classList.toggle('checked', selected > 0 && selected === selectable.length);
+        all.setAttribute('aria-checked', selected > 0 && selected < selectable.length ? 'mixed' : String(selected > 0));
+    }
     if (state.users.length === 0) {
         container.innerHTML = renderUiState({ icon: 'ph ph-users', title: '暂无用户', tone: 'empty', compact: true });
         return;
@@ -19,8 +26,8 @@ function renderUserBlock(user, ctx) {
     const meta = buildUserMeta(user, ctx);
     if (meta.locked) ctx.state.selectedUserIds.delete(user.id);
     return `
-        <div class="user-block ${meta.isSelected ? 'selected' : ''}" id="user-block-${user.id}">
-            <div class="t-row" data-action="toggle-expand" data-user-id="${user.id}">
+        <div class="user-block ${ctx.state.expandedUserIds.has(user.id) ? 'expanded' : ''} ${meta.isSelected ? 'selected' : ''}" id="user-block-${user.id}">
+            <div class="t-row" role="button" tabindex="0" aria-expanded="${ctx.state.expandedUserIds.has(user.id)}" data-action="toggle-expand" data-user-id="${user.id}">
                 <div class="control-cell">${renderUserCheckbox(user, meta)}</div>
                 <div class="col-avatar"><div class="avatar">${meta.avatar}</div></div>
                 <div class="col-info">
@@ -36,9 +43,9 @@ function renderUserBlock(user, ctx) {
 
 function buildUserMeta(user, ctx) {
     const subEmails = user.mailboxes || [];
-    const used = subEmails.length;
+    const used = user.mailbox_count ?? subEmails.length;
     const locked = ctx.isLockedUser(user);
-    const quota = locked ? '∞' : (user.quota || 10);
+    const quota = locked ? '∞' : (user.quota ?? 10);
     return {
         subEmails,
         used,
@@ -46,7 +53,7 @@ function buildUserMeta(user, ctx) {
         selectable: ctx.canManageUsers() && !locked,
         isSelected: ctx.state.selectedUserIds.has(user.id),
         quota,
-        percentage: locked ? 100 : Math.min((used / (user.quota || 10)) * 100, 100),
+        percentage: locked ? 100 : (user.quota > 0 ? Math.min((used / user.quota) * 100, 100) : 0),
         roleLabel: locked ? 'Super Admin' : user.role,
         avatar: ctx.escapeHtml((user.name || user.username || 'U').substring(0, 2).toUpperCase()),
         displayName: ctx.escapeHtml(user.name || user.username || ''),
@@ -118,7 +125,7 @@ function renderActionButtons(user, meta) {
 function renderDetailsPanel(user, meta, ctx) {
     if (meta.locked) return '';
     return `
-        <div class="details-panel" onclick="event.stopPropagation()">
+        <div class="details-panel">
             <div class="panel-content">
                 <div class="detail-panel-header">
                     <span class="subemail-title">已分配邮箱列表 (${meta.used})</span>
@@ -136,6 +143,7 @@ function renderAssignButton(user, meta) {
 }
 
 function renderSubEmails(user, meta, ctx) {
+    if (user.mailboxes === null) return renderUiState({ title: user.mailboxesError || '展开后加载邮箱', description: user.mailboxesError ? '收起后重新展开即可重试' : '', tone: user.mailboxesError ? 'error' : 'loading', compact: true });
     if (meta.subEmails.length === 0) return '<div class="table-empty-inline">暂无分配邮箱</div>';
     return meta.subEmails.map((mail) => renderSubEmailItem(user, mail, meta, ctx)).join('');
 }
@@ -143,7 +151,7 @@ function renderSubEmails(user, meta, ctx) {
 function renderSubEmailItem(user, mail, meta, ctx) {
     const safeAddress = ctx.escapeHtml(String(mail.address || ''));
     return `
-        <div class="email-item" id="email-item-${mail.id}">
+        <div class="email-item" id="email-item-${user.id}-${mail.id}">
             <div class="subemail-main">
                 <i class="ph ph-envelope-simple icon-accent"></i>
                 <span class="mail-address-text">${safeAddress}</span>

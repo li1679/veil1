@@ -78,6 +78,7 @@ export async function handleMailboxSelfPasswordUpdate(ctx, body) {
 function validateSelfPasswordPayload(payload) {
   const { currentPassword, newPassword } = payload;
   if (!currentPassword || !newPassword) return new Response('当前密码和新密码不能为空', { status: 400 });
+  if (typeof currentPassword !== 'string' || currentPassword.length > 1024) return new Response('当前密码必须为最多1024位的字符串', { status: 400 });
   return validateMailboxPassword(newPassword);
 }
 

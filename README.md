@@ -2,19 +2,19 @@
 
 基于 Cloudflare Workers 的临时邮箱服务。零依赖，纯 Vanilla JS，开箱即用。
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/li1679/veil)
+当前目录是以 `veil1` 2026-05-22 版本为基础的全新部署源码，已移除旧版本迁移和数据回退，不携带 Git 历史。来源及清理范围见 [源码基线](docs/source-baseline.md)。
 
 ## 功能概览
 
 **收发邮件**
-- 随机 / 人名 / 自定义前缀生成邮箱
+- 随机 / 人名 / 自定义前缀生成邮箱，支持批量生成
 - 多域名支持（逗号分隔）
 - 实时收件箱轮询
 - 验证码智能提取（4-8 位数字，一键复制）
 - 邮件发送（通过 Resend，支持多域名独立密钥）
 - 邮件详情查看 + EML 原件下载
 - 可配置过期时间（1 小时 / 1 天 / 3 天 / 永久）
-- Soft-TTL 自动收件兜底（未创建邮箱也可短期接收）
+- 仅向已创建且未过期的邮箱投递邮件
 
 **用户系统**
 - 三级角色：Admin / User / Mailbox（独立邮箱登录）
@@ -83,26 +83,23 @@
 
 ## 快速部署
 
-### 方式一：一键部署
+在新的 Cloudflare 账号中创建并绑定 D1 和 R2，使用空数据库。不要使用旧账号的资源 ID 或旧版本数据库。
 
-点击上方按钮，Cloudflare 会自动创建 GitHub 仓库并绑定 Worker。
-
-> 详细说明见 [一键部署指南](docs/yijianbushu.md)
-
-### 方式二：手动部署
+完整步骤见 [全新部署运行手册](docs/deployment-runbook.md)。
 
 ```bash
-# 1. 克隆仓库
-git clone https://github.com/li1679/veil.git
+# 1. 进入当前源码目录
 cd veil
+wrangler login
 
-# 2. 创建 D1 数据库
+# 2. 创建新的 D1 数据库和 R2 存储桶
 wrangler d1 create veil_db
+wrangler r2 bucket create mail-eml
 
-# 3. 将返回的 database_id 填入 wrangler.toml（可选，不填则自动绑定）
+# 3. 在 wrangler.toml 配置 Worker 名称、新数据库的 database_id 和 R2 bucket_name
 
-# 4. 初始化数据库
-wrangler d1 execute veil_db --file=./d1-init.sql
+# 4. 初始化远端数据库
+wrangler d1 execute veil_db --remote --file=./d1-init.sql
 
 # 5. 设置环境变量（在 Cloudflare Dashboard 或使用 wrangler secret）
 wrangler secret put ADMIN_PASSWORD
@@ -136,7 +133,7 @@ wrangler deploy
 
 | 变量名 | 说明 |
 |--------|------|
-| `ROOT_ADMIN_TOKEN` | Root 覆写令牌（外部 API 调用用；不填则回退 JWT_TOKEN） |
+| `ROOT_ADMIN_TOKEN` | Root 覆写令牌（外部 API 调用用，单独设置，不回退使用 JWT_TOKEN） |
 | `RECEIVE_TOKEN` | `/receive` 注入接口鉴权令牌（不设置则任何人可写入邮件） |
 | `MAILBOX_PASSWORD_KEY` | 邮箱密码加密密钥（管理面板显示原密码用；不填沿用 JWT_TOKEN） |
 
@@ -150,7 +147,6 @@ wrangler deploy
 | `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile 人机验证 | — |
 | `CORS_ORIGINS` | 允许跨域的 Origin（逗号分隔） | — |
 | `CORS_ALLOW_CREDENTIALS` | 是否允许跨域 Cookie | `false` |
-| `SOFT_TTL_AUTO_HOURS` | Soft-TTL 自动创建邮箱有效期（小时） | `24` |
 | `CLEANUP_MAX_RUNTIME_MS` | Cron 清理单次最长运行时间 | `25000` |
 | `CLEANUP_MAILBOX_BATCH_SIZE` | Cron 每批处理过期邮箱数量 | `50` |
 | `CLEANUP_MESSAGE_BATCH_SIZE` | 单邮箱每批处理消息条数 | `200` |
@@ -218,7 +214,7 @@ veil/
 │   ├── ttlCleanup.js           Cron 过期清理
 │   ├── emailForwarder.js       邮件转发
 │   ├── emailSender.js          Resend 发件封装
-│   ├── database.js             D1 Schema + 迁移 + CRUD
+│   ├── database.js             数据库模块聚合入口
 │   ├── nameGenerator.js        人名前缀生成器
 │   ├── turnstile.js            Turnstile 人机验证
 │   └── ...
@@ -247,12 +243,12 @@ veil/
 │   ├── manifest.json           PWA Manifest
 │   └── favicon.svg
 ├── wrangler.toml               Cloudflare Workers 配置
-├── d1-init.sql                 D1 初始化脚本（含迁移）
-├── d1-init-basic.sql           D1 初始化脚本（纯净版）
+├── d1-init.sql                 唯一的全新实例初始化脚本
 ├── docs/                       文档
 │   ├── api.md                  API 完整文档
 │   ├── resend.md               Resend 配置教程
-│   └── yijianbushu.md          一键部署指南
+│   ├── deployment-runbook.md   全新部署运行手册
+│   └── source-baseline.md      源码来源与清理边界
 └── LICENSE                     Apache-2.0
 ```
 
@@ -270,12 +266,10 @@ veil/
 
 ### 初始化
 
-```bash
-# 完整版（包含旧表迁移逻辑）
-wrangler d1 execute veil_db --file=./d1-init.sql
+使用空数据库，只保留一个手动初始化入口，不提供旧库迁移。
 
-# 纯净版（全新部署推荐）
-wrangler d1 execute veil_db --file=./d1-init-basic.sql
+```bash
+wrangler d1 execute veil_db --remote --file=./d1-init.sql
 ```
 
 ## 安全
@@ -302,10 +296,6 @@ wrangler d1 execute veil_db --file=./d1-init-basic.sql
 - 如对公网开放，建议开启 Turnstile 人机验证
 - 过期清理由 Cron 自动触发（默认每 6 小时，见 `wrangler.toml`）
 - 部署和回滚步骤见 [部署运行手册](docs/deployment-runbook.md)
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=li1679/veil&type=Date)](https://www.star-history.com/#li1679/veil&Date)
 
 ## 许可证
 

@@ -107,7 +107,7 @@
             if (loginBtn.disabled) return;
 
             const username = usernameInput.value.trim();
-            const password = passwordInput.value.trim();
+            const password = passwordInput.value;
 
             if (!username || !password) {
                 showError('请输入用户名和密码');

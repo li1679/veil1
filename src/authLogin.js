@@ -1,6 +1,7 @@
 import { createJwt, buildSessionCookie, verifyMailboxLogin, verifyPassword, timingSafeEqual } from './authentication.js';
 import { getDatabaseWithValidation } from './dbConnectionHelper.js';
 import { extractTurnstileToken, verifyTurnstileToken, getClientIP } from './turnstile.js';
+import { requireJsonObject } from './requestValidation.js';
 
 const ADMIN_LOGIN_LIMIT = 9999;
 const DEFAULT_USER_MAILBOX_LIMIT = 10;
@@ -12,7 +13,7 @@ export async function handleLogin(context) {
   const turnstileFailure = await verifyConfiguredTurnstile(request, env);
   if (turnstileFailure) return turnstileFailure;
 
-  const database = await resolveLoginDatabase(env);
+  const database = context.db || await resolveLoginDatabase(env);
   if (database instanceof Response) return database;
 
   try {
@@ -69,14 +70,17 @@ function createAuthConfig(env) {
 }
 
 async function parseLoginCredentials(request) {
-  const body = await request.json();
+  const body = requireJsonObject(await request.json());
   return {
-    name: String(body.username || '').trim().toLowerCase(),
-    password: String(body.password || '').trim()
+    name: typeof body.username === 'string' ? body.username.trim().toLowerCase() : '',
+    password: body.password
   };
 }
 
 function validateLoginCredentials(credentials) {
+  if (typeof credentials.password !== 'string' || credentials.password.length > 1024 || credentials.name.length > 254) {
+    return new Response('用户名或密码类型、长度无效', { status: 400 });
+  }
   if (!credentials.name || !credentials.password) {
     return new Response('用户名或密码不能为空', { status: 400 });
   }
@@ -162,7 +166,7 @@ async function tryAuthenticateUser({ credentials, config, DB, requestUrl }) {
       name: row.name || row.username || credentials.name,
       status: row.status || 'Active',
       can_send: row.can_send ? 1 : 0,
-      mailbox_limit: row.mailbox_limit || DEFAULT_USER_MAILBOX_LIMIT
+      mailbox_limit: row.mailbox_limit ?? DEFAULT_USER_MAILBOX_LIMIT
     }, token, requestUrl);
   } catch (_) {
     return null;
@@ -195,7 +199,7 @@ async function tryAuthenticateMailbox({ credentials, config, DB, requestUrl }) {
 }
 
 function createSessionResponse(body, token, requestUrl) {
-  const headers = new Headers({ 'Content-Type': 'application/json' });
+  const headers = new Headers({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
   headers.set('Set-Cookie', buildSessionCookie(token, requestUrl));
   return new Response(JSON.stringify(body), { headers });
 }

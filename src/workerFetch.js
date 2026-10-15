@@ -5,18 +5,21 @@ import { authMiddleware, createRouter } from './routes.js';
 import { checkSecurityRateLimit } from './securityRateLimit.js';
 import { applyCorsIfNeeded, buildCorsPreflightResponse, getCorsConfig, isApiPath } from './workerCors.js';
 
+const router = createRouter();
+router.use(authMiddleware);
+
 export async function handleFetchRequest(request, env, ctx) {
   const corsConfig = getCorsConfig(env);
   if (isCorsPreflight(request)) return buildCorsPreflightResponse(request, corsConfig);
 
-  const rateLimit = checkSecurityRateLimit(request, env);
+  const rateLimit = await checkSecurityRateLimit(request, env);
   if (rateLimit) return applyCorsIfNeeded(rateLimit, request, corsConfig);
 
   const db = await openFetchDatabase(env);
   if (db instanceof Response) return db;
-  await ensureDatabaseInitialized(db);
+  await initDatabase(db);
 
-  const routeResponse = await routeRequest(request, env, ctx);
+  const routeResponse = await router.handle(request, { request, env, ctx, db });
   if (routeResponse) return applyCorsIfNeeded(routeResponse, request, corsConfig);
   return createAssetManager().handleAssetRequest(request, env, getMailDomains(env));
 }
@@ -32,18 +35,6 @@ async function openFetchDatabase(env) {
     console.error('数据库连接失败:', error.message);
     return new Response('数据库连接失败，请检查配置', { status: 500 });
   }
-}
-
-async function ensureDatabaseInitialized(db) {
-  if (globalThis.__DB_INITED__) return;
-  await initDatabase(db);
-  globalThis.__DB_INITED__ = true;
-}
-
-async function routeRequest(request, env, ctx) {
-  const router = createRouter();
-  router.use(authMiddleware);
-  return router.handle(request, { request, env, ctx });
 }
 
 function getMailDomains(env) {

@@ -1,4 +1,4 @@
-import { escapeHtml } from './common.js';
+import { escapeHtml } from './common-html.js';
 import { renderUiState } from './ui-state.js';
 
 export function renderHistoryLoading() {
@@ -9,14 +9,14 @@ export function renderHistoryEmpty() {
     return renderUiState({ icon: 'ph ph-tray', title: '暂无历史记录', tone: 'empty', compact: true });
 }
 
-export function renderHistoryItem(item) {
+export function renderHistoryItem(item, activeEmail) {
     const safeEmail = escapeHtml(item.email);
     const safeTime = escapeHtml(item.time);
     const count = escapeHtml(item.emailCount ?? 0);
     const pinnedClass = item.pinned ? ' is-pinned' : '';
     const pinLabel = item.pinned ? '取消置顶' : '置顶邮箱';
     return `
-        <div class="history-item" id="history-${escapeHtml(item.id)}" role="button" tabindex="0" data-action="restore-email" data-email="${safeEmail}">
+        <div class="history-item ${item.email === activeEmail ? 'is-current' : ''}" id="history-${escapeHtml(item.id)}" role="button" tabindex="0" aria-pressed="${item.email === activeEmail}" data-action="restore-email" data-email="${safeEmail}">
             <div class="h-info"><div>${safeEmail}</div><div>${safeTime} • ${count} 封</div></div>
             <div class="h-actions">
                 <button class="h-btn" type="button" data-action="toggle-pin" data-id="${escapeHtml(item.id)}" aria-label="${pinLabel}">

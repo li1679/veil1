@@ -71,7 +71,7 @@ function sanitizeElement(el, stripStyles) {
 function sanitizeAttribute(el, attr, stripStyles) {
     const name = String(attr.name || '').toLowerCase();
     const value = String(attr.value ?? '');
-    if (name.startsWith('on') || name === 'srcdoc' || name === 'srcset' || name === 'ping') {
+    if (name.startsWith('on') || name.startsWith('data-command-') || name === 'srcdoc' || name === 'srcset' || name === 'ping') {
         el.removeAttribute(attr.name);
     } else if (name === 'style') {
         sanitizeStyleAttribute(el, attr, value, stripStyles);
@@ -96,47 +96,4 @@ function enforceBlankTargetRel(el) {
     if (!parts.includes('noopener')) parts.push('noopener');
     if (!parts.includes('noreferrer')) parts.push('noreferrer');
     el.setAttribute('rel', parts.join(' '));
-}
-
-export function fitMailHtmlToViewport(target = 'mailDetailBody') {
-    if (typeof document === 'undefined' || typeof window === 'undefined') return;
-    if (!window.matchMedia('(max-width: 768px)').matches) return;
-    const container = typeof target === 'string' ? document.getElementById(target) : target;
-    if (!(container instanceof HTMLElement)) return;
-    const fitRoot = container.querySelector('.mail-html-fit');
-    const content = fitRoot?.querySelector('.mail-html-sanitized');
-    if (!(fitRoot instanceof HTMLElement) || !(content instanceof HTMLElement)) return;
-    applyMailHtmlFit(fitRoot, content);
-    content.querySelectorAll('img').forEach((img) => bindImageFitRefresh(img, fitRoot, content));
-}
-
-function applyMailHtmlFit(fitRoot, content) {
-    resetMailHtmlFit(fitRoot, content);
-    const viewportWidth = fitRoot.clientWidth;
-    const naturalWidth = Math.max(content.scrollWidth, content.offsetWidth);
-    if (!viewportWidth || !naturalWidth || naturalWidth <= viewportWidth) {
-        content.style.maxWidth = '100%';
-        return;
-    }
-    const scale = viewportWidth / naturalWidth;
-    const naturalHeight = Math.max(content.scrollHeight, content.offsetHeight);
-    content.style.width = `${naturalWidth}px`;
-    content.style.transformOrigin = 'top left';
-    content.style.transform = `scale(${scale})`;
-    fitRoot.style.height = `${Math.ceil(naturalHeight * scale)}px`;
-}
-
-function resetMailHtmlFit(fitRoot, content) {
-    content.style.transform = '';
-    content.style.transformOrigin = '';
-    content.style.width = '';
-    content.style.maxWidth = '';
-    fitRoot.style.height = '';
-}
-
-function bindImageFitRefresh(img, fitRoot, content) {
-    if (!(img instanceof HTMLImageElement) || img.complete) return;
-    const refresh = () => applyMailHtmlFit(fitRoot, content);
-    img.addEventListener('load', refresh, { once: true });
-    img.addEventListener('error', refresh, { once: true });
 }

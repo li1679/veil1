@@ -1,4 +1,4 @@
-import { escapeHtml } from './common.js';
+import { escapeHtml } from './common-html.js';
 
 const ICON_CLASS_PATTERN = /^[a-z0-9\s_-]+$/i;
 

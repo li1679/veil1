@@ -24,8 +24,16 @@ export async function loadExpiredMailboxIds(db, limit) {
 }
 
 export async function deleteMailboxRows(db, mailboxId) {
-  const deleteResult = await db.prepare('DELETE FROM messages WHERE mailbox_id = ?').bind(mailboxId).run();
-  await db.prepare('DELETE FROM user_mailboxes WHERE mailbox_id = ?').bind(mailboxId).run();
-  await db.prepare('DELETE FROM mailboxes WHERE id = ?').bind(mailboxId).run();
-  return deleteResult?.meta?.changes || 0;
+  const mailbox = await db.prepare('SELECT address FROM mailboxes WHERE id = ?').bind(mailboxId).all();
+  const owners = await db.prepare('SELECT user_id FROM user_mailboxes WHERE mailbox_id = ?').bind(mailboxId).all();
+  const results = await db.batch([
+    db.prepare('DELETE FROM messages WHERE mailbox_id = ?').bind(mailboxId),
+    db.prepare('DELETE FROM user_mailboxes WHERE mailbox_id = ?').bind(mailboxId),
+    db.prepare('DELETE FROM mailboxes WHERE id = ?').bind(mailboxId),
+  ]);
+  const { invalidateMailboxCache, invalidateUserQuotaCache, invalidateSystemStatCache } = await import('./cacheHelper.js');
+  (mailbox.results || []).forEach((row) => invalidateMailboxCache(db, row.address));
+  (owners.results || []).forEach((row) => invalidateUserQuotaCache(db, row.user_id));
+  invalidateSystemStatCache(db, 'total_mailboxes');
+  return results[0]?.meta?.changes || 0;
 }

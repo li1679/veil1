@@ -9,14 +9,14 @@ export const mailboxUserAPI = {
         return { address };
     },
 
-    async getMyEmails() {
-        const response = await request('/api/emails');
+    async getMyEmails(options = {}) {
+        const response = await request('/api/emails', options);
         const list = Array.isArray(response) ? response : (response.emails || []);
         return { emails: list.map(mapEmailItem) };
     },
 
-    async getEmail(id) {
-        const response = await request(`/api/email/${id}`);
+    async getEmail(id, options = {}) {
+        const response = await request(`/api/email/${id}`, options);
         const email = response && response.email ? response.email : response;
         return { email: mapEmailDetail(email) };
     },
@@ -25,12 +25,10 @@ export const mailboxUserAPI = {
         return request(`/api/email/${id}`, { method: 'DELETE' });
     },
 
-    async send(to, subject, content) {
-        const session = await authAPI.getSession();
-        const from = session.mailbox_address || session.username || '';
+    async send(from, fromName, to, subject, content) {
         return request('/api/send', {
             method: 'POST',
-            body: JSON.stringify({ from, to, subject, text: content }),
+            body: JSON.stringify({ from, fromName, to, subject, text: content }),
         });
     },
 };

@@ -1,16 +1,13 @@
 import { normalizeId, request } from './api-core.js';
 import { normalizeUserQuota, normalizeUserRole } from './api-mappers.js';
 import { userCache, userMailboxCache } from './api-state.js';
+import { runBatch } from './async-actions.js';
 
-async function fetchUserMailboxes(userId) {
-    try {
-        const response = await request(`/api/users/${userId}/mailboxes`);
-        if (Array.isArray(response)) return response;
-        if (response && Array.isArray(response.mailboxes)) return response.mailboxes;
-    } catch (_) {
-        // ignore cache miss helper failures
-    }
-    return [];
+async function fetchUserMailboxes(userId, options = {}) {
+    const response = await request(`/api/users/${userId}/mailboxes`, options);
+    const mailboxes = Array.isArray(response) ? response : response.mailboxes;
+    cacheUserMailboxes(userId, mailboxes);
+    return mailboxes;
 }
 
 function cacheUserMailboxes(userId, mailboxes) {
@@ -47,20 +44,18 @@ async function resolveUserMailboxAddress(userId, mailboxId) {
     return refreshed ? refreshed.get(mailboxKey) : undefined;
 }
 
-async function normalizeUser(user) {
+function normalizeUser(user) {
     if (!user || typeof user.id === 'undefined') return user;
-    let mailboxes = Array.isArray(user.mailboxes) ? user.mailboxes : null;
-    if (!mailboxes) mailboxes = await fetchUserMailboxes(user.id);
+    const mailboxes = Array.isArray(user.mailboxes) ? user.mailboxes : null;
     userCache.set(normalizeId(user.id), user.username);
-    cacheUserMailboxes(normalizeId(user.id), mailboxes);
     return {
         ...user,
         quota: normalizeUserQuota(user),
         role: normalizeUserRole(user.role),
+        mailboxes,
         name: (typeof user.name === 'string') ? user.name : '',
         can_send: Boolean(user.can_send),
         status: user.status || 'Active',
-        mailboxes,
     };
 }
 
@@ -77,11 +72,22 @@ function buildUserPayload(userData) {
 }
 
 export const userAPI = {
-    async getUsers() {
-        const response = await request('/api/users');
-        const list = Array.isArray(response) ? response : (response.users || []);
-        const normalized = await Promise.all(list.map(normalizeUser));
-        return { users: normalized.filter(Boolean) };
+    async getUsers(params = {}, options = {}) {
+        const query = new URLSearchParams(params);
+        const response = await request(`/api/users${query.size ? '?' + query : ''}`, options);
+        const list = Array.isArray(response) ? response : response.users;
+        return { users: list.map(normalizeUser), pagination: response.pagination || null };
+    },
+
+    async getUserMailboxes(id, options = {}) { return { mailboxes: await fetchUserMailboxes(id, options) }; },
+
+    async getUserOptions() {
+        const users = [];
+        for (let offset = 0; ; offset += 100) {
+            const batch = await request(`/api/users?scope=options&limit=100&offset=${offset}`);
+            users.push(...batch);
+            if (batch.length < 100) return users;
+        }
     },
 
     async getUser(id) {
@@ -109,13 +115,14 @@ export const userAPI = {
     },
 
     async delete(id) {
-        return request(`/api/users/${id}`, { method: 'DELETE' });
+        const result = await request(`/api/users/${id}`, { method: 'DELETE' });
+        userCache.delete(normalizeId(id));
+        userMailboxCache.delete(normalizeId(id));
+        return result;
     },
 
-    async batchDelete(ids) {
-        const results = await Promise.allSettled((ids || []).map((id) => request(`/api/users/${id}`, { method: 'DELETE' })));
-        const deleted = results.filter((result) => result.status === 'fulfilled').length;
-        return { success: true, deleted };
+    async batchDelete(ids, options = {}) {
+        return runBatch(ids, (id) => userAPI.delete(id), options);
     },
 
     async assignMailbox(userId, prefix, domain) {

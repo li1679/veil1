@@ -1,9 +1,9 @@
 ﻿import { handleApiRequest, handleEmailReceive } from './apiHandlers.js';
 import { timingSafeEqual } from './authentication.js';
 import { registerAuthRoutes } from './authRoutes.js';
-import { extractEmail } from './commonUtils.js';
 import { getDatabaseWithValidation } from './dbConnectionHelper.js';
 import { registerHealthRoutes } from './healthRoutes.js';
+import { renewSessionResponse } from './sessionRenewal.js';
 export { authMiddleware, resolveAuthPayload } from './requestAuth.js';
 
 const API_DELEGATE_METHODS = ['get', 'post', 'patch', 'put', 'delete'];
@@ -133,7 +133,8 @@ export class Router {
           }
 
           // 执行路由处理函数
-          return await route.handler(enhancedContext);
+          const response = await route.handler(enhancedContext);
+          return renewSessionResponse(response, enhancedContext);
         }
       }
     }
@@ -174,7 +175,7 @@ async function handleReceiveRequest(context) {
 
   let DB;
   try {
-    DB = await getDatabaseWithValidation(env);
+    DB = context.db || await getDatabaseWithValidation(env);
   } catch (error) {
     console.error('邮件接收时数据库连接失败:', error.message);
     return new Response('数据库连接失败', { status: 500 });
@@ -225,7 +226,7 @@ async function delegateApiRequest(context) {
   const { request, env, authPayload } = context;
   let DB;
   try {
-    DB = await getDatabaseWithValidation(env);
+    DB = context.db || await getDatabaseWithValidation(env);
   } catch (error) {
     console.error('API请求时数据库连接失败:', error.message);
     return new Response('数据库连接失败', { status: 500 });
@@ -251,25 +252,13 @@ async function delegateApiRequest(context) {
     env.JWT_SECRET ||
     '';
 
-  // 邮箱用户只能访问自己的邮箱数据
-  if (authPayload.role === 'mailbox') {
-    return handleApiRequest(request, DB, MAIL_DOMAINS, { 
-      mockOnly: false, 
-      resendApiKey: RESEND_API_KEY, 
-      adminName: ADMIN_NAME, 
-      passwordEncryptionKey: PASSWORD_ENCRYPTION_KEY,
-      r2: env.MAIL_EML, 
-      authPayload,
-      mailboxOnly: true
-    });
-  }
-  
   return handleApiRequest(request, DB, MAIL_DOMAINS, { 
     mockOnly: false, 
     resendApiKey: RESEND_API_KEY, 
     adminName: ADMIN_NAME, 
     passwordEncryptionKey: PASSWORD_ENCRYPTION_KEY,
     r2: env.MAIL_EML, 
-    authPayload 
+    authPayload,
+    mailboxOnly: authPayload.role === 'mailbox'
   });
 }

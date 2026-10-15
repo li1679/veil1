@@ -51,7 +51,7 @@ export async function checkSession() {
                 canSend: Boolean(typeof response.can_send !== 'undefined' ? response.can_send : response.canSend),
                 quota: typeof response.quota !== 'undefined'
                     ? response.quota
-                    : (response.mailbox_limit || response.mailboxLimit),
+                    : (response.mailbox_limit ?? response.mailboxLimit),
                 quotaUsed: typeof response.quota_used !== 'undefined' ? response.quota_used : response.quotaUsed,
                 mailboxAddress,  // 邮箱用户专用
             };
@@ -63,7 +63,7 @@ export async function checkSession() {
         removeStorage('veil_user');
         return null;
     } catch (error) {
-        console.error('Session check failed:', error);
+        if (error.status !== 401 && error.status !== 403) throw error;
         currentUser = null;
         removeStorage('veil_user');
         return null;
@@ -96,13 +96,12 @@ export async function login(username, password) {
 export async function logout() {
     try {
         await authAPI.logout();
-    } catch (error) {
-        console.error('Logout error:', error);
-    } finally {
         currentUser = null;
         removeStorage('veil_user');
-        // 重定向到登录页
         window.location.href = '/login.html';
+    } catch (error) {
+        const { showToast } = await import('./common-toast.js');
+        showToast(error.message || '退出失败，请重试');
     }
 }
 

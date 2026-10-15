@@ -12,7 +12,7 @@ export async function createUser(db, {
   if (!uname) throw new Error('用户名不能为空');
 
   await db.prepare('INSERT INTO users (username, name, password_hash, role, can_send, mailbox_limit, status) VALUES (?, ?, ?, ?, 0, ?, ?)')
-    .bind(uname, normalizeUserName(name, uname), passwordHash, role, Math.max(0, Number(mailboxLimit || 10)), normalizeUserStatus(status)).run();
+    .bind(uname, normalizeUserName(name, uname), passwordHash, role, Number(mailboxLimit), normalizeUserStatus(status)).run();
   const res = await db.prepare('SELECT id, username, name, role, can_send, mailbox_limit, status, created_at FROM users WHERE username = ? LIMIT 1')
     .bind(uname).all();
   return res?.results?.[0];
@@ -34,7 +34,7 @@ export async function updateUser(db, userId, fields) {
 
   await db.prepare(`UPDATE users SET ${update.setClauses.join(', ')} WHERE id = ?`)
     .bind(...update.values, userId).run();
-  await invalidateUserUpdateCaches(userId, nextFields);
+  await invalidateUserUpdateCaches(db, userId, nextFields);
 }
 
 function normalizeUserFields(fields) {
@@ -58,10 +58,10 @@ function buildUserUpdate(fields) {
   return setClauses.length ? { setClauses, values } : null;
 }
 
-async function invalidateUserUpdateCaches(userId, fields) {
+async function invalidateUserUpdateCaches(db, userId, fields) {
   const { invalidateUserQuotaCache, invalidateSystemStatCache } = await import('./cacheHelper.js');
-  if ('mailbox_limit' in fields) invalidateUserQuotaCache(userId);
-  if ('can_send' in fields) invalidateSystemStatCache(`user_can_send_${userId}`);
+  if ('mailbox_limit' in fields) invalidateUserQuotaCache(db, userId);
+  if ('can_send' in fields) invalidateSystemStatCache(db, `user_can_send_${userId}`);
 }
 
 export async function deleteUser(db, userId) {
@@ -112,12 +112,12 @@ export async function assignMailboxToUser(db, { userId = null, username = null, 
   const normalized = normalizeMailboxAssignmentAddress(address);
   const uid = await resolveUserId(db, { userId, username });
 
-  const quota = await getCachedUserQuota(db, uid);
+  const quota = await getCachedUserQuota(db, uid, { fresh: true });
   if (quota.used >= quota.limit) throw new Error('已达到邮箱上限');
 
   const mailboxId = await getOrCreateMailboxId(db, normalized, { createdByUserId: uid, expiresAt });
   await bindMailboxToUser(db, uid, mailboxId);
-  invalidateUserQuotaCache(uid);
+  invalidateUserQuotaCache(db, uid);
   return { success: true };
 }
 
@@ -138,7 +138,15 @@ async function resolveUserId(db, { userId = null, username = null }) {
 }
 
 async function bindMailboxToUser(db, userId, mailboxId) {
-  await db.prepare('INSERT OR IGNORE INTO user_mailboxes (user_id, mailbox_id) VALUES (?, ?)').bind(userId, mailboxId).run();
+  const result = await db.prepare(`
+    INSERT OR IGNORE INTO user_mailboxes (user_id, mailbox_id)
+    SELECT ?, ? WHERE (SELECT COUNT(1) FROM user_mailboxes WHERE user_id = ?) <
+      (SELECT mailbox_limit FROM users WHERE id = ?)
+  `).bind(userId, mailboxId, userId, userId).run();
+  if (!result.meta?.changes) {
+    const existing = await db.prepare('SELECT 1 FROM user_mailboxes WHERE user_id = ? AND mailbox_id = ?').bind(userId, mailboxId).all();
+    if (!existing.results?.length) throw new Error('已达到邮箱上限');
+  }
   await db.prepare('UPDATE mailboxes SET created_by_user_id = COALESCE(created_by_user_id, ?) WHERE id = ?')
     .bind(userId, mailboxId).run();
 }
@@ -166,7 +174,7 @@ export async function unassignMailboxFromUser(db, { userId = null, username = nu
   const uid = await resolveUserId(db, { userId, username });
   await requireUserMailboxBinding(db, uid, mailboxId);
   await db.prepare('DELETE FROM user_mailboxes WHERE user_id = ? AND mailbox_id = ?').bind(uid, mailboxId).run();
-  invalidateUserQuotaCache(uid);
+  invalidateUserQuotaCache(db, uid);
   return { success: true };
 }
 

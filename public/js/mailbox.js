@@ -1,3 +1,4 @@
+import { actions } from './page-actions.js';
 /**
  * Veil - 邮箱用户页面逻辑
  * 只能查看分配的邮箱收件箱
@@ -5,9 +6,11 @@
 
 import { mailboxUserAPI } from './api.js';
 import { requireMailboxUser, logout, canSend } from './auth.js';
-import { showToast, copyText, initCommon } from './common.js';
+import { copyText, initCommon, reportPageError } from './common.js';
 import { createInboxController } from './inbox.js';
 import { createComposeController } from './compose.js';
+import { mountSharedOverlays } from './shared-overlays.js';
+mountSharedOverlays();
 
 // ============================================
 // 全局状态
@@ -16,36 +19,14 @@ let currentUser = null;
 let mailboxAddress = null;
 
 // ============================================
-// 收件箱加载（mailbox 专用，使用 mailboxUserAPI）
-// ============================================
-async function loadInbox() {
-    if (!mailboxAddress) return;
-
-    try {
-        const response = await mailboxUserAPI.getMyEmails();
-        const emails = response.emails || [];
-        inbox.renderInbox(emails);
-
-        const countEl = document.getElementById('emailCount');
-        if (countEl) {
-            countEl.textContent = `共 ${emails.length} 封`;
-        }
-    } catch (error) {
-        console.error('Failed to load inbox:', error);
-        inbox.renderError(error.message || '加载邮件失败');
-        showToast('加载邮件失败');
-    }
-}
-
-// ============================================
 // 初始化共享控制器
 // ============================================
 const inbox = createInboxController({
     emailAPI: {
-        getEmail: (id) => mailboxUserAPI.getEmail(id),
+        getEmail: (id, options) => mailboxUserAPI.getEmail(id, options),
         delete: (id) => mailboxUserAPI.deleteEmail(id),
+        getEmails: (_address, options) => mailboxUserAPI.getMyEmails(options),
     },
-    loadInbox,
     getActiveEmail: () => mailboxAddress,
 });
 
@@ -53,7 +34,6 @@ createComposeController({
     sendAPI: mailboxUserAPI,
     getFromAddress: () => mailboxAddress,
     canSend: () => canSend(currentUser),
-    hasSenderName: false,
 });
 
 // ============================================
@@ -89,17 +69,17 @@ function updateUI() {
 // ============================================
 // 页面专有函数
 // ============================================
-window.copyMailbox = function() {
+actions.copyMailbox = function() {
     if (mailboxAddress) {
         copyText(mailboxAddress);
     }
 };
 
-window.handleLogout = function() {
+actions.handleLogout = function() {
     logout();
 };
 
 // ============================================
 // 启动
 // ============================================
-init();
+init().catch(reportPageError);

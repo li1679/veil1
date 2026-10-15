@@ -1,5 +1,6 @@
 import { assignMailboxToUser, getUserMailboxes, unassignMailboxFromUser } from '../database.js';
 import { readUserIdFromPath } from './userUtils.js';
+import { MAILBOX_LOCAL_PATTERN } from './mailboxUtils.js';
 
 export async function handleAssignMailbox(ctx, body) {
   if (!ctx.isStrictAdmin()) return new Response('Forbidden', { status: 403 });
@@ -7,6 +8,10 @@ export async function handleAssignMailbox(ctx, body) {
     const payload = body ?? await ctx.readJsonBody();
     const request = readMailboxAssignmentPayload(payload);
     if (request instanceof Response) return request;
+    const parts = request.address.split('@');
+    if (parts.length !== 2 || !MAILBOX_LOCAL_PATTERN.test(parts[0]) || !ctx.availableDomains.includes(parts[1])) {
+      return new Response('邮箱地址或域名无效', { status: 400 });
+    }
     if (ctx.isSuperAdminName(request.username)) return new Response('Forbidden', { status: 403 });
     return Response.json(await assignMailboxToUser(ctx.db, request));
   } catch (e) {
@@ -28,6 +33,7 @@ export async function handleUnassignMailbox(ctx, body) {
 }
 
 function readMailboxAssignmentPayload(payload) {
+  if (typeof payload.username !== 'string' || typeof payload.address !== 'string') return new Response('用户名和邮箱地址必须为字符串', { status: 400 });
   const username = String(payload.username || '').trim();
   const address = String(payload.address || '').trim().toLowerCase();
   if (!username || !address) return new Response('参数不完整', { status: 400 });

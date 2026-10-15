@@ -1,3 +1,4 @@
+import { actions } from './page-actions.js';
 import { closeModal, openModal } from './common-modal.js';
 import { copyText } from './common-clipboard.js';
 import { escapeHtml } from './common-html.js';
@@ -5,7 +6,7 @@ import { showToast } from './common-toast.js';
 
 const BULK_MODAL_ID = 'bulkResultModal';
 let lastBulkAddresses = [];
-let globalsRegistered = false;
+let actionsRegistered = false;
 
 export function showBulkResult(result) {
     const summary = document.getElementById('bulkResultSummary');
@@ -23,7 +24,7 @@ export function showBulkResult(result) {
         : created.map(renderAddressRow).join('');
     failed.textContent = fails.length === 0 ? '' : `失败 ${fails.length} 个：${summarizeFailures(fails)}`;
 
-    registerBulkResultGlobals();
+    registerBulkResultActions();
     openModal(BULK_MODAL_ID);
 }
 
@@ -48,12 +49,12 @@ function summarizeFailures(fails) {
     return fails.length > 3 ? `${top.join('；')}… 等` : top.join('；');
 }
 
-function registerBulkResultGlobals() {
+function registerBulkResultActions() {
     if (typeof window === 'undefined') return;
-    if (globalsRegistered) return;
-    globalsRegistered = true;
-    window.closeBulkResult = () => closeModal(BULK_MODAL_ID);
-    window.copyBulkResult = () => {
+    if (actionsRegistered) return;
+    actionsRegistered = true;
+    actions.closeBulkResult = () => closeModal(BULK_MODAL_ID);
+    actions.copyBulkResult = () => {
         if (lastBulkAddresses.length === 0) {
             showToast('没有可复制的地址');
             return;

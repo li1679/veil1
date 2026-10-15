@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -31,7 +31,7 @@
                     <i class="ph ph-github-logo"></i>
                     <span>GitHub</span>
                 </a>
-                <button class="btn btn-ghost logout-height" onclick="handleLogout()">
+                <button class="btn btn-ghost logout-height" data-command-click="handleLogout">
                     <i class="ph ph-sign-out"></i> 退出
                 </button>
             </div>
@@ -39,13 +39,13 @@
 
         <!-- 操作栏 -->
         <div class="mailbox-action-row">
-            <button class="btn btn-secondary" onclick="copyMailbox()">
+            <button class="btn btn-secondary" data-command-click="copyMailbox">
                 <i class="ph-bold ph-copy"></i> 复制邮箱
             </button>
-            <button class="btn btn-secondary" onclick="refreshInbox()">
+            <button class="btn btn-secondary" data-command-click="refreshInbox">
                 <i class="ph-bold ph-arrows-clockwise"></i> 刷新收件箱
             </button>
-            <button class="btn btn-primary send-action-btn" id="sendMailBtn" onclick="openSendModal()">
+            <button class="btn btn-primary send-action-btn" id="sendMailBtn" data-command-click="openSendModal">
                 <i class="ph-bold ph-paper-plane-tilt"></i> 发送邮件
             </button>
         </div>
@@ -55,7 +55,7 @@
             <div class="mailbox-inbox">
                 <div class="inbox-header">
                     <div class="inbox-title"><span class="status-dot"></span> 收件箱</div>
-                    <div id="emailCount" class="inbox-caption">加载中...</div>
+                    <div class="inbox-summary"><span id="emailCount" class="inbox-caption">加载中…</span><span id="inboxStatus" class="inbox-caption">准备收件</span></div>
                 </div>
                 <div id="inboxContainer" class="mailbox-inbox-container">
                     <div class="state-block state-loading" aria-live="polite"><i class="ph ph-spinner spinning" aria-hidden="true"></i><span class="state-title">加载中...</span></div>
@@ -67,64 +67,7 @@
     <!-- Toast -->
     <div class="toast" id="toast"><i class="ph-bold ph-check"></i> <span id="toastMsg">成功</span></div>
 
-    <!-- 发送邮件模态框 -->
-    <div class="modal-overlay" id="sendModalOverlay">
-        <div class="sheet-modal">
-            <div class="sheet-header">
-                <button class="sheet-btn" onclick="closeSendModal()">取消</button>
-                <div class="sheet-title">新邮件</div>
-                <button class="sheet-btn send" id="sendBtn" onclick="doSendEmail()">发送</button>
-            </div>
-            <div class="sheet-body">
-                <div class="compose-field">
-                    <span class="compose-label">收件人:</span>
-                    <input type="text" class="compose-input" id="toInput" placeholder="recipient@example.com" oninput="checkComposeInput()">
-                </div>
-                <div class="compose-field">
-                    <span class="compose-label">主题:</span>
-                    <input type="text" class="compose-input" id="subjectInput" placeholder="邮件主题" oninput="checkComposeInput()">
-                </div>
-                <textarea class="compose-area" id="contentInput" placeholder="输入邮件正文..." oninput="checkComposeInput()"></textarea>
-            </div>
-        </div>
-    </div>
-
-    <!-- 邮件详情模态框 -->
-    <div class="modal-overlay" id="mailDetailModal">
-        <div class="sheet-modal mail-detail-modal">
-            <div class="sheet-header">
-                <button class="sheet-btn" onclick="closeMailDetail()">关闭</button>
-                <div class="sheet-title">邮件详情</div>
-                <div class="sheet-spacer"></div>
-            </div>
-            <div class="mail-detail-header">
-                <div class="mail-detail-subject" id="mailDetailSubject"></div>
-                <div class="mail-detail-meta">
-                    <div class="mail-detail-avatar" id="mailDetailAvatar"></div>
-                    <div class="mail-detail-info">
-                        <div class="mail-detail-from" id="mailDetailFrom"></div>
-                        <div class="mail-detail-to">收件人: <span id="mailDetailTo"></span></div>
-                    </div>
-                    <div class="mail-detail-time" id="mailDetailTime"></div>
-                </div>
-            </div>
-            <div class="mail-detail-body" id="mailDetailBody"></div>
-        </div>
-    </div>
-
-    <!-- iOS 确认框 -->
-    <div class="modal-overlay" id="iosAlertModal">
-        <div class="ios-alert-box">
-            <div class="ios-alert-content">
-                <h3 id="iosAlertTitle" class="ios-alert-title">确认操作</h3>
-                <p id="iosAlertDesc" class="ios-alert-desc">确定要继续吗？</p>
-            </div>
-            <div class="ios-alert-buttons">
-                <button class="ios-alert-btn cancel">取消</button>
-                <button id="iosAlertConfirmBtn" class="ios-alert-btn destruct">确定</button>
-            </div>
-        </div>
-    </div>
+    <div id="sharedOverlays"></div>
 
     <script type="module" src="/js/mailbox.js"></script>
 </body>

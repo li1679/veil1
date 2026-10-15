@@ -1,5 +1,6 @@
 import { getMailboxIdByAddress, toggleMailboxPin } from '../database.js';
 import { encryptMailboxPassword } from '../cryptoUtils.js';
+import { readBoolean, RequestValidationError } from '../requestValidation.js';
 import {
   MAX_BATCH_MAILBOXES,
   MAX_REMARK_LENGTH,
@@ -62,13 +63,14 @@ export async function handleToggleMailboxLogin(ctx, body) {
   try {
     const payload = body ?? await ctx.readJsonBody();
     const address = String(payload.address || '').trim().toLowerCase();
-    const canLogin = Boolean(payload.can_login);
+    const canLogin = readBoolean(payload.can_login, 'can_login');
     if (!address) return new Response('缺少 address 参数', { status: 400 });
     if (!await mailboxExists(ctx, address)) return new Response('邮箱不存在', { status: 404 });
 
     await ctx.db.prepare('UPDATE mailboxes SET can_login = ? WHERE address = ?').bind(canLogin ? 1 : 0, address).run();
     return Response.json({ success: true, can_login: canLogin });
   } catch (e) {
+    if (e instanceof RequestValidationError) return new Response(e.message, { status: 400 });
     return new Response('操作失败: ' + e.message, { status: 500 });
   }
 }
@@ -80,7 +82,7 @@ export async function handleChangeMailboxPassword(ctx, body) {
   try {
     const payload = body ?? await ctx.readJsonBody();
     const address = String(payload.address || '').trim().toLowerCase();
-    const newPassword = String(payload.new_password || '').trim();
+    const newPassword = payload.new_password;
     if (!address) return new Response('缺少 address 参数', { status: 400 });
     const validation = validateMailboxPassword(newPassword);
     if (validation) return validation;
@@ -109,6 +111,7 @@ export async function handleBatchToggleLogin(ctx, body) {
 
     return Response.json(buildBatchToggleResponse(payload.addresses, prepared.failures, batchResult));
   } catch (e) {
+    if (e instanceof RequestValidationError) return new Response(e.message, { status: 400 });
     return new Response('操作失败: ' + e.message, { status: 500 });
   }
 }
@@ -123,33 +126,31 @@ function prepareBatchTogglePayload(payload) {
   for (const address of addresses) {
     const normalizedAddress = String(address || '').trim().toLowerCase();
     if (!normalizedAddress) failures.push({ address, success: false, error: '地址为空' });
+    else if (addressMap.has(normalizedAddress)) failures.push({ address, success: false, error: '地址重复' });
     else addressMap.set(normalizedAddress, address);
   }
-  return { addressMap, failures, canLogin: Boolean(payload.can_login) };
+  return { addressMap, failures, canLogin: readBoolean(payload.can_login, 'can_login') };
 }
 
 async function loadExistingMailboxes(ctx, addressMap) {
   if (addressMap.size === 0) return new Set();
-  try {
-    const addressList = Array.from(addressMap.keys());
-    const placeholders = addressList.map(() => '?').join(',');
-    const { results } = await ctx.db.prepare(`SELECT address FROM mailboxes WHERE address IN (${placeholders})`)
-      .bind(...addressList).all();
-    return new Set((results || []).map((row) => row.address));
-  } catch (e) {
-    console.error('批量检查邮箱失败:', e);
-    return new Set();
-  }
+  const addressList = Array.from(addressMap.keys());
+  const placeholders = addressList.map(() => '?').join(',');
+  const { results } = await ctx.db.prepare(`SELECT address FROM mailboxes WHERE address IN (${placeholders})`)
+    .bind(...addressList).all();
+  return new Set((results || []).map((row) => row.address));
 }
 
 function buildBatchToggleStatements(ctx, prepared, existingMailboxes) {
   const statements = [];
-  for (const [normalizedAddress] of prepared.addressMap.entries()) {
-    const exists = existingMailboxes.has(normalizedAddress);
-    const stmt = exists
-      ? ctx.db.prepare('UPDATE mailboxes SET can_login = ? WHERE address = ?').bind(prepared.canLogin ? 1 : 0, normalizedAddress)
-      : ctx.db.prepare('INSERT INTO mailboxes (address, can_login) VALUES (?, ?)').bind(normalizedAddress, prepared.canLogin ? 1 : 0);
-    statements.push({ stmt, address: normalizedAddress, type: exists ? 'update' : 'insert' });
+  for (const [address] of prepared.addressMap) {
+    if (!existingMailboxes.has(address)) {
+      prepared.failures.push({ address, success: false, error: '邮箱不存在' });
+      continue;
+    }
+    const stmt = ctx.db.prepare('UPDATE mailboxes SET can_login = ? WHERE address = ?')
+      .bind(prepared.canLogin ? 1 : 0, address);
+    statements.push({ stmt, address });
   }
   return statements;
 }
@@ -173,9 +174,9 @@ function mapBatchToggleResults(statements, batchResults) {
   for (let index = 0; index < batchResults.length; index++) {
     const result = batchResults[index];
     const operation = statements[index];
-    if (result.success !== false) {
+    if (result.success !== false && result.meta?.changes > 0) {
       successCount++;
-      results.push({ address: operation.address, success: true, [operation.type === 'insert' ? 'created' : 'updated']: true });
+      results.push({ address: operation.address, success: true, updated: true });
     } else {
       failCount++;
       results.push({ address: operation.address, success: false, error: result.error || '操作失败' });
@@ -186,7 +187,7 @@ function mapBatchToggleResults(statements, batchResults) {
 
 function buildBatchToggleResponse(addresses, failures, batchResult) {
   return {
-    success: true,
+    success: failures.length === 0 && batchResult.failCount === 0,
     success_count: batchResult.successCount,
     fail_count: batchResult.failCount + failures.length,
     total: addresses.length,
@@ -205,7 +206,7 @@ export async function handleDeleteMailbox(ctx) {
     if (authorization instanceof Response) return authorization;
 
     const result = await executeMailboxDeletion(ctx, target, authorization);
-    await invalidateDeletionCaches(target, authorization, result.deleted);
+    await invalidateDeletionCaches(ctx.db, target, authorization, result.deleted);
     return Response.json({ success: true, deleted: result.deleted, unassigned: result.unassigned });
   } catch (_) {
     return new Response('删除失败', { status: 500 });
@@ -256,14 +257,14 @@ async function executeMailboxDeletion(ctx, target, authorization) {
   return { deleted: (results[2]?.meta?.changes || 0) > 0, unassigned: true };
 }
 
-async function invalidateDeletionCaches(target, authorization, deleted) {
+async function invalidateDeletionCaches(db, target, authorization, deleted) {
   const { invalidateMailboxCache, invalidateUserQuotaCache, invalidateSystemStatCache } = await import('../cacheHelper.js');
   if (deleted) {
-    invalidateMailboxCache(target.address);
-    invalidateSystemStatCache('total_mailboxes');
+    invalidateMailboxCache(db, target.address);
+    invalidateSystemStatCache(db, 'total_mailboxes');
   }
-  if (authorization.strict) target.ownerIds.forEach((id) => invalidateUserQuotaCache(id));
-  else if (authorization.uid) invalidateUserQuotaCache(authorization.uid);
+  if (authorization.strict) target.ownerIds.forEach((id) => invalidateUserQuotaCache(db, id));
+  else if (authorization.uid) invalidateUserQuotaCache(db, authorization.uid);
 }
 
 async function mailboxExists(ctx, address) {

@@ -126,7 +126,7 @@ export async function validateRequiredSchema(db) {
     }
   }
   if (missing.length > 0) {
-    throw new Error(`数据库结构不完整，请先执行 migrations/2026-04-30-align-schema.sql 或重新初始化数据库: ${missing.join(', ')}`);
+    throw new Error(`数据库结构不完整，请使用空数据库并执行 d1-init.sql 初始化: ${missing.join(', ')}`);
   }
 }
 

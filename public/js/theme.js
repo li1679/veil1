@@ -46,7 +46,11 @@ export function toggleTheme() {
     return next;
 }
 
+let initialized = false;
+
 export function initTheme() {
+    if (initialized) return;
+    initialized = true;
     const saved = getStoredTheme();
     const media = window.matchMedia('(prefers-color-scheme: dark)');
 
@@ -94,7 +98,4 @@ function emitThemeChange(theme) {
     }
 }
 
-if (typeof window !== 'undefined') {
-    window.initTheme = initTheme;
-    window.toggleTheme = toggleTheme;
-}
+if (typeof window !== 'undefined') initTheme();

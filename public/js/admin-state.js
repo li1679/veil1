@@ -5,6 +5,9 @@ export function createAdminState() {
         emailHistory: [],
         users: [],
         allMailboxes: [],
+        expandedUserIds: new Set(),
+        usersPage: { page: 1, limit: 50, total: 0, totalPages: 1 },
+        userOptions: [],
         selectedUserIds: new Set(),
         selectedEmailIds: new Set(),
         selectedExpiry: '24h',
@@ -23,7 +26,5 @@ export function createAdminState() {
     };
 }
 
-export const HISTORY_FETCH_LIMIT = 50;
-export const HISTORY_MAX_PAGES = 200;
 export const DEFAULT_ALL_MAILBOX_PAGE_SIZE = 50;
 export const ALL_MAILBOX_PAGE_SIZE_OPTIONS = [20, 50, 100];

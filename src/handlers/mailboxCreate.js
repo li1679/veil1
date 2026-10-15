@@ -1,6 +1,7 @@
 import { generateRandomId } from '../commonUtils.js';
 import { assignMailboxToUser, checkMailboxOwnership, getOrCreateMailboxId } from '../database.js';
 import { generateHumanNamePrefix } from '../nameGenerator.js';
+import { readInteger, RequestValidationError } from '../requestValidation.js';
 import {
   chooseMailboxDomain,
   getDomains,
@@ -18,9 +19,10 @@ export async function handleGenerate(ctx, body) {
     const chosenDomain = chooseMailboxDomain(payload, domains);
     const prefix = buildGeneratedPrefix(payload);
     const email = `${prefix}@${chosenDomain}`;
+    const expiresAt = resolveExpiresAt(payload.expiry);
 
     if (!ctx.isMock) {
-      await persistGeneratedMailbox(ctx, email, resolveExpiresAt(payload.expiry));
+      await persistGeneratedMailbox(ctx, email, expiresAt);
     }
     return Response.json({ address: email });
   } catch (e) {
@@ -36,8 +38,7 @@ export async function handleGenerateBulk(ctx, body) {
 
     const userId = ctx.isMock ? 0 : await ctx.resolveAdminUserId();
     const maxCount = await resolveBulkMaxCount(ctx, userId);
-    const requested = Number(payload.count || 1);
-    const count = Math.max(1, Math.min(maxCount, Math.floor(requested) || 1));
+    const count = readInteger(payload.count, { name: 'count', min: 1, max: maxCount, defaultValue: 1 });
 
     const domains = getDomains(ctx);
     const expiresAt = resolveExpiresAt(payload.expiry);
@@ -54,10 +55,8 @@ function validateBulkPayload(payload) {
   if (prefixMode === 'custom') {
     return new Response('自定义前缀模式不支持批量生成', { status: 400 });
   }
-  const requested = Number(payload?.count);
-  if (!Number.isFinite(requested) || requested < 1) {
-    return new Response('数量参数无效，必须为正整数', { status: 400 });
-  }
+  readInteger(payload.count, { name: 'count', min: 1, max: MAX_BULK_GENERATE_COUNT_ADMIN });
+  readInteger(payload.length, { name: 'length', min: 4, max: 32, defaultValue: 12 });
   return null;
 }
 
@@ -131,12 +130,15 @@ function formatBulkSuccess(email, expiresAt) {
 }
 
 function resolvePrefixMode(payload) {
-  return String(payload?.prefix_mode ?? payload?.prefixMode ?? 'random').trim();
+  const mode = payload.prefix_mode ?? payload.prefixMode ?? 'random';
+  if (!['random', 'name', 'custom'].includes(mode)) throw new RequestValidationError('无效的前缀模式');
+  return mode;
 }
 
 function buildGeneratedPrefix(payload) {
   const prefixMode = resolvePrefixMode(payload);
-  const lengthParam = Number(payload.length || 12);
+  if (prefixMode === 'custom') throw new RequestValidationError('自定义前缀请使用创建邮箱接口');
+  const lengthParam = readInteger(payload.length, { name: 'length', min: 4, max: 32, defaultValue: 12 });
   return prefixMode === 'name'
     ? generateHumanNamePrefix(lengthParam)
     : generateRandomId(lengthParam);
@@ -160,12 +162,13 @@ export async function handleCreate(ctx, body) {
 
     const domains = getDomains(ctx);
     const email = `${local}@${chooseMailboxDomain(payload, domains)}`;
-    if (ctx.isMock) {
-      return Response.json({ address: email, expires: Date.now() + 3600000 });
-    }
-    return await persistCreatedMailbox(ctx, email, resolveExpiresAt(payload.expiry));
-  } catch (_) {
-    return new Response(ctx.isMock ? 'Bad Request' : '创建失败', { status: ctx.isMock ? 400 : 500 });
+    const expiresAt = resolveExpiresAt(payload.expiry);
+    if (ctx.isMock) return Response.json({ address: email, expires: expiresAt });
+    return await persistCreatedMailbox(ctx, email, expiresAt);
+  } catch (error) {
+    if (error instanceof RequestValidationError) return new Response(error.message, { status: 400 });
+    console.error('创建邮箱失败:', error);
+    return new Response('创建失败', { status: 500 });
   }
 }
 

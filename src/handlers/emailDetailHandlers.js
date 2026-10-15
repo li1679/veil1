@@ -14,8 +14,9 @@ export async function handleEmailDetail(ctx) {
     if (row instanceof Response) return row;
     await ctx.db.prepare('UPDATE messages SET is_read = 1 WHERE id = ?').bind(emailId).run();
     return Response.json(await buildDetailResponse(ctx, emailId, row));
-  } catch (_) {
-    return await handleLegacyDetail(ctx, emailId);
+  } catch (error) {
+    console.error('查询邮件详情失败:', error);
+    return new Response('查询邮件详情失败', { status: 500 });
   }
 }
 
@@ -48,14 +49,15 @@ async function resolveMessageContent(ctx, emailId, row) {
   try {
     const parsed = await loadParsedEmailFromR2(ctx, row.r2_object_key);
     if (parsed) applyParsedContent(resolved, parsed, emailId);
-  } catch (_) {}
-  if (!resolved.text && !resolved.html) await applyLegacyContent(ctx, emailId, resolved);
+  } catch (error) {
+    console.warn('读取邮件原件失败，仅显示预览:', error);
+  }
   return resolved;
 }
 
 function createInitialResolvedContent(row) {
   return {
-    text: '',
+    text: String(row.preview || ''),
     html: '',
     subject: String(row.subject || ''),
     sender: String(row.sender || ''),
@@ -69,25 +71,4 @@ function applyParsedContent(resolved, parsed, emailId) {
   resolved.subject = parsed.subject || resolved.subject;
   resolved.sender = extractEmail(parsed.from || '') || resolved.sender;
   resolved.toAddrs = String(parsed.to || resolved.toAddrs || '');
-}
-
-async function applyLegacyContent(ctx, emailId, resolved) {
-  try {
-    const fallback = await ctx.db.prepare('SELECT content, html_content FROM messages WHERE id = ?').bind(emailId).all();
-    const row = fallback?.results?.[0] || {};
-    resolved.text = resolved.text || row.content || '';
-    resolved.html = resolved.html || row.html_content || '';
-  } catch (_) {}
-}
-
-async function handleLegacyDetail(ctx, emailId) {
-  const { results } = await ctx.db.prepare(`
-    SELECT id, sender, subject, content, html_content, received_at, is_read
-    FROM messages WHERE id = ?
-  `).bind(emailId).all();
-  if (!results?.length) return new Response('未找到邮件', { status: 404 });
-  await ctx.db.prepare('UPDATE messages SET is_read = 1 WHERE id = ?').bind(emailId).run();
-  const row = results[0] || {};
-  row.html_content = await sanitizeEmailHtml(row.html_content);
-  return Response.json(row);
 }

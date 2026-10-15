@@ -1,3 +1,4 @@
+import { initDatabase } from './database.js';
 import { getDatabaseWithValidation } from './dbConnectionHelper.js';
 import { ttlCleanup } from './ttlCleanup.js';
 
@@ -9,6 +10,7 @@ export async function handleScheduledEvent(event, env, ctx) {
   let db;
   try {
     db = await getDatabaseWithValidation(env);
+    await initDatabase(db);
   } catch (error) {
     console.error('定时任务数据库连接失败:', error.message);
     return;

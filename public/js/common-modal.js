@@ -1,7 +1,10 @@
+import { showToast } from './common-toast.js';
+
 const modalStack = [];
 const modalLastFocus = new Map();
 let modalA11yInitialized = false;
 let pendingAlertAction = null;
+let confirming = false;
 
 function getFocusableElements(root) {
     if (!root) return [];
@@ -108,8 +111,10 @@ export function openModal(modalId) {
 export function closeModal(modalId) {
     const modal = document.getElementById(modalId);
     if (!modal) return;
+    if (modalId === 'iosAlertModal' && confirming) return;
     modal.classList.remove('active');
     modal.setAttribute('aria-hidden', 'true');
+    modal.dispatchEvent(new Event('modal:closed'));
     const index = modalStack.lastIndexOf(modalId);
     if (index >= 0) modalStack.splice(index, 1);
     const fallback = modalLastFocus.get(modalId);
@@ -134,9 +139,21 @@ function closeIOSAlert() {
     pendingAlertAction = null;
 }
 
-function confirmIOSAlert() {
-    if (pendingAlertAction) pendingAlertAction();
-    closeIOSAlert();
+async function confirmIOSAlert() {
+    if (!pendingAlertAction || confirming) return;
+    const action = pendingAlertAction;
+    const confirm = document.getElementById('iosAlertConfirmBtn');
+    const cancel = document.querySelector('#iosAlertModal .ios-alert-btn:first-child');
+    const label = confirm.textContent;
+    confirming = true;
+    confirm.disabled = true; cancel.disabled = true;
+    confirm.textContent = '处理中…';
+    try {
+        await action();
+        confirming = false;
+        closeIOSAlert();
+    } catch (error) { showToast(error.message || '操作失败，请重试'); }
+    finally { confirming = false; confirm.disabled = false; cancel.disabled = false; confirm.textContent = label; }
 }
 
 export function initIOSAlert() {

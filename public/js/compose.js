@@ -1,39 +1,15 @@
-/**
- * Veil - 发送邮件共享模块
- * 发送模态框打开/关闭、输入检查、发送
- */
-
+import { actions } from './page-actions.js';
 import { showToast, openModal, closeModal } from './common.js';
 
-/**
- * 创建邮件发送控制器
- * @param {object} opts
- * @param {object} opts.sendAPI — 需提供 send(...) 方法
- * @param {function} opts.getFromAddress — 返回发件地址
- * @param {function} [opts.canSend] — 权限检查，返回 boolean
- * @param {boolean} [opts.hasSenderName] — 是否有发件人名称字段
- */
-export function createComposeController(opts) {
-    const { sendAPI, getFromAddress, canSend, hasSenderName = true } = opts;
+export function createComposeController({ sendAPI, getFromAddress, canSend }) {
+    let sending = false;
 
     function openSendModal() {
-        const from = getFromAddress();
-        if (!from) {
-            showToast('请先生成邮箱');
-            return;
+        if (!getFromAddress()) return showToast('请先生成邮箱');
+        if (canSend && !canSend()) return showToast('您没有发送邮件的权限');
+        for (const id of ['senderNameInput', 'toInput', 'subjectInput', 'contentInput']) {
+            document.getElementById(id).value = '';
         }
-        if (canSend && !canSend()) {
-            showToast('您没有发送邮件的权限');
-            return;
-        }
-
-        if (hasSenderName) {
-            const senderNameEl = document.getElementById('senderNameInput');
-            if (senderNameEl) senderNameEl.value = '';
-        }
-        document.getElementById('toInput').value = '';
-        document.getElementById('subjectInput').value = '';
-        document.getElementById('contentInput').value = '';
         checkComposeInput();
         openModal('sendModalOverlay');
     }
@@ -43,59 +19,41 @@ export function createComposeController(opts) {
     }
 
     function checkComposeInput() {
-        const { to, subject } = readComposeValues(hasSenderName);
-        const btn = document.getElementById('sendBtn');
-
-        if (to && subject) btn.classList.add('active');
-        else btn.classList.remove('active');
+        const { to, subject } = readComposeValues();
+        const button = document.getElementById('sendBtn');
+        button.disabled = sending || !to || !subject;
+        button.classList.toggle('active', !button.disabled);
     }
 
     async function doSendEmail() {
-        const values = readComposeValues(hasSenderName);
-
-        if (!values.to || !values.subject) {
-            showToast('请填写收件人和主题');
-            return;
-        }
-
+        if (sending) return;
+        if (canSend && !canSend()) return showToast('您没有发送邮件的权限');
+        const values = readComposeValues();
+        if (!values.to || !values.subject) return showToast('请填写收件人和主题');
+        sending = true;
+        checkComposeInput();
         try {
-            await sendComposeMessage({ sendAPI, getFromAddress, hasSenderName }, values);
+            await sendAPI.send(getFromAddress(), values.fromName, values.to, values.subject, values.content);
             closeSendModal();
             showToast('邮件已发送');
         } catch (error) {
             showToast(error.message || '发送失败');
+        } finally {
+            sending = false;
+            checkComposeInput();
         }
     }
 
-    registerComposeGlobals({ openSendModal, closeSendModal, checkComposeInput, doSendEmail });
-    return { openSendModal, closeSendModal, checkComposeInput, doSendEmail };
+    const handlers = { openSendModal, closeSendModal, checkComposeInput, doSendEmail };
+    Object.assign(actions, handlers);
+    return handlers;
 }
 
-function registerComposeGlobals(handlers) {
-    window.openSendModal = handlers.openSendModal;
-    window.closeSendModal = handlers.closeSendModal;
-    window.checkComposeInput = handlers.checkComposeInput;
-    window.doSendEmail = handlers.doSendEmail;
-}
-
-function readComposeValues(hasSenderName) {
+function readComposeValues() {
     return {
-        fromName: hasSenderName ? (document.getElementById('senderNameInput')?.value.trim() || 'Veil') : '',
+        fromName: document.getElementById('senderNameInput').value.trim() || 'Veil',
         to: document.getElementById('toInput').value.trim(),
         subject: document.getElementById('subjectInput').value.trim(),
-        content: document.getElementById('contentInput').value.trim(),
+        content: document.getElementById('contentInput').value,
     };
-}
-
-async function sendComposeMessage(controller, values) {
-    if (controller.hasSenderName) {
-        return controller.sendAPI.send(
-            controller.getFromAddress(),
-            values.fromName,
-            values.to,
-            values.subject,
-            values.content,
-        );
-    }
-    return controller.sendAPI.send(values.to, values.subject, values.content);
 }

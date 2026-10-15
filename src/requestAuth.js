@@ -35,7 +35,7 @@ async function authenticateSessionRequest(context, jwtSecret) {
   const payload = await verifyJwtWithCache(jwtSecret, context.request.headers.get('Cookie') || '');
   if (!payload) return new Response('Unauthorized', { status: 401 });
 
-  const statusFailure = await verifyActiveUserStatus(context.env, payload);
+  const statusFailure = await verifyActiveUserStatus(context.env, payload, context.db);
   if (statusFailure) return statusFailure;
   context.authPayload = payload;
   return null;

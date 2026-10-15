@@ -5,7 +5,7 @@ import {
   loadExpiredMailboxIds,
   readCleanupOptions
 } from './ttlCleanupHelpers.js';
-import { deleteMailboxR2Objects } from './ttlR2Cleanup.js';
+import { drainR2DeleteQueue } from './r2DeleteQueue.js';
 
 export async function ttlCleanup(db, r2, options = {}) {
   const startTime = Date.now();
@@ -20,21 +20,20 @@ export async function ttlCleanup(db, r2, options = {}) {
         stats.errors.push('Reached max runtime, stopping early');
         break;
       }
-      await cleanupExpiredMailbox(db, r2, mailboxId, { ...config, startTime, stats });
+      try {
+        stats.deletedMessages += await deleteMailboxRows(db, mailboxId);
+      } catch (error) {
+        stats.errors.push(`Mailbox ${mailboxId}: ${error.message}`);
+      }
     }
-  } catch (e) {
-    stats.errors.push(`Fatal: ${e.message}`);
+    while (!isRuntimeExceeded(startTime, config.maxRuntime)) {
+      const result = await drainR2DeleteQueue(db, r2, { limit: Math.max(1, Math.min(100, Math.floor(config.messageBatchSize))) });
+      stats.deletedR2Objects += result.deleted;
+      if (!result.pending) break;
+    }
+  } catch (error) {
+    stats.errors.push(`Cleanup failed: ${error.message}`);
   }
 
   return stats;
-}
-
-async function cleanupExpiredMailbox(db, r2, mailboxId, context) {
-  try {
-    const r2Deleted = await deleteMailboxR2Objects(db, r2, mailboxId, context);
-    if (!r2Deleted) return;
-    context.stats.deletedMessages += await deleteMailboxRows(db, mailboxId);
-  } catch (e) {
-    context.stats.errors.push(`Mailbox ${mailboxId}: ${e.message}`);
-  }
 }

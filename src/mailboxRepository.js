@@ -13,15 +13,15 @@ export async function getOrCreateMailboxId(db, address, options = {}) {
   const parsed = parseMailboxAddress(normalized);
   const existingId = await findExistingMailboxId(db, normalized);
   if (existingId) {
-    updateMailboxIdCache(normalized, existingId);
+    updateMailboxIdCache(db, normalized, existingId);
     await touchMailboxNow(db, existingId);
     return existingId;
   }
 
   await insertMailbox(db, normalized, parsed, createdByUserId, normalizedExpiresAt);
   const newId = await loadCreatedMailboxId(db, normalized);
-  updateMailboxIdCache(normalized, newId);
-  await invalidateTotalMailboxCount();
+  updateMailboxIdCache(db, normalized, newId);
+  await invalidateTotalMailboxCount(db);
   return newId;
 }
 
@@ -80,9 +80,9 @@ async function loadCreatedMailboxId(db, normalized) {
   return created.results[0].id;
 }
 
-async function invalidateTotalMailboxCount() {
+async function invalidateTotalMailboxCount(db) {
   const { invalidateSystemStatCache } = await import('./cacheHelper.js');
-  invalidateSystemStatCache('total_mailboxes');
+  invalidateSystemStatCache(db, 'total_mailboxes');
 }
 
 export async function getMailboxIdForReceive(db, address) {
@@ -96,7 +96,7 @@ export async function getMailboxIdForReceive(db, address) {
   const id = active.results?.[0]?.id || null;
   if (!id) return null;
 
-  updateMailboxIdCache(normalized, id);
+  updateMailboxIdCache(db, normalized, id);
   touchMailbox(db, id);
   return id;
 }

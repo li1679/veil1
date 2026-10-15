@@ -1,6 +1,5 @@
 import { extractEmail } from '../commonUtils.js';
 import { getMailboxIdByAddress } from '../database.js';
-import { extractVerificationCode } from '../emailParser.js';
 
 export async function handlePublicExtractCodes(ctx, body) {
   try {
@@ -36,7 +35,7 @@ async function extractCodeForAddress(ctx, rawAddress) {
   const mailboxId = await getMailboxIdByAddress(ctx.db, address);
   if (!mailboxId) return emptyCodeResult(address);
   const rows = await loadRecentMessageRows(ctx, mailboxId);
-  return findCodeInRows(ctx, address, rows);
+  return findCodeInRows(address, rows);
 }
 
 function emptyCodeResult(address) {
@@ -45,25 +44,17 @@ function emptyCodeResult(address) {
 
 async function loadRecentMessageRows(ctx, mailboxId) {
   const { results } = await ctx.db.prepare(
-    `SELECT id, subject, preview, verification_code, received_at
+    `SELECT id, verification_code, received_at
      FROM messages WHERE mailbox_id = ? ORDER BY received_at DESC LIMIT 20`
   ).bind(mailboxId).all();
   return results || [];
 }
 
-async function findCodeInRows(ctx, address, rows) {
+function findCodeInRows(address, rows) {
   for (const row of rows) {
-    const code = String(row?.verification_code || '').trim() ||
-      extractVerificationCode({ subject: row?.subject || '', text: row?.preview || '', html: '' });
+    const code = String(row?.verification_code || '').trim();
     if (!code) continue;
-    await persistExtractedCode(ctx, row.id, code);
     return { address, code, messageId: row?.id ?? null, receivedAt: row?.received_at ?? null };
   }
   return emptyCodeResult(address);
-}
-
-async function persistExtractedCode(ctx, messageId, code) {
-  try {
-    await ctx.db.prepare('UPDATE messages SET verification_code = ? WHERE id = ?').bind(code, messageId).run();
-  } catch (_) {}
 }

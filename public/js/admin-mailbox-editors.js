@@ -1,12 +1,13 @@
+import { actions } from './page-actions.js';
 export function registerMailboxEditors(args) {
     const ctx = { ...args, currentPwdEditId: null, currentRemarkEditId: null };
-    window.openPwdModal = (id, address) => openPwdModal(ctx, id, address);
-    window.closePwdModal = () => closePwdModal(ctx);
-    window.copyOldPassword = (event) => copyOldPassword(ctx, event);
-    window.savePassword = () => savePassword(ctx);
-    window.openRemarkModal = (id, address) => openRemarkModal(ctx, id, address);
-    window.closeRemarkModal = () => closeRemarkModal(ctx);
-    window.saveRemark = () => saveRemark(ctx);
+    actions.openPwdModal = (id, address) => openPwdModal(ctx, id, address);
+    actions.closePwdModal = () => closePwdModal(ctx);
+    actions.copyOldPassword = (event) => copyOldPassword(ctx, event);
+    actions.savePassword = () => savePassword(ctx);
+    actions.openRemarkModal = (id, address) => openRemarkModal(ctx, id, address);
+    actions.closeRemarkModal = () => closeRemarkModal(ctx);
+    actions.saveRemark = () => saveRemark(ctx);
 }
 
 async function openPwdModal(ctx, id, address) {
@@ -37,7 +38,7 @@ function copyOldPassword(ctx, event) {
 
 async function savePassword(ctx) {
     if (!ctx.currentPwdEditId) return;
-    const password = document.getElementById('newPasswordInput').value.trim();
+    const password = document.getElementById('newPasswordInput').value;
     const mailbox = ctx.state.allMailboxes.find((item) => item.id === ctx.currentPwdEditId);
     try {
         await ctx.deps.adminMailboxAPI.update(ctx.currentPwdEditId, {

@@ -40,23 +40,6 @@
 /* ============================================
    登录页样式 — 布局与动效
    ============================================ */
-#login-view {
-    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-    z-index: 100;
-    transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-                transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-                visibility 0.6s;
-    transform: scale(1);
-    opacity: 1;
-    visibility: visible;
-}
-
-#login-view.hidden {
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transform: scale(1.1);
-}
 
 .scene {
     perspective: 1200px; width: 100%; height: 100vh;
@@ -140,29 +123,12 @@ body.app-mode #aurora-canvas { opacity: 0; }
 /* ============================================
    应用主窗口样式
    ============================================ */
-#app-view {
-    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-    z-index: 50; display: flex; justify-content: center; align-items: center;
-    opacity: 0;
-    transform: scale(0.92) translateY(20px);
-    filter: blur(20px);
-    pointer-events: none;
-    transition: all 0.7s cubic-bezier(0.19, 1, 0.22, 1);
-}
-
-body.app-mode #app-view {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-    filter: blur(0);
-    pointer-events: auto;
-    transition-delay: 0.1s;
-}
+#app-view { position: fixed; inset: 0; z-index: 50; display: flex; justify-content: center; align-items: center; }
 
 .app-window {
-    width: 96%; height: 94%; max-width: 1600px;
+    width: calc(100% - 32px); height: calc(100% - 32px); max-width: 1600px;
     background: var(--surface-window); border-radius: var(--r-window);
-    box-shadow: 0 24px 60px rgba(0,0,0,0.15);
+    box-shadow: var(--shadow-float);
     display: flex; overflow: hidden;
-    border: 1px solid var(--stroke-soft);
     position: relative;
 }

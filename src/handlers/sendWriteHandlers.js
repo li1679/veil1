@@ -78,14 +78,18 @@ async function validateBatchSendItems(ctx, uid, items) {
 
 async function loadOwnedFromSet(ctx, uid, addresses) {
   if (!addresses.length) return new Set();
-  const placeholders = addresses.map(() => '?').join(',');
-  const { results } = await ctx.db.prepare(`
-    SELECT m.address AS address
-    FROM user_mailboxes um
-    JOIN mailboxes m ON m.id = um.mailbox_id
-    WHERE um.user_id = ? AND m.address IN (${placeholders})
-  `).bind(uid, ...addresses).all();
-  return new Set((results || []).map((row) => String(row?.address || '').trim().toLowerCase()).filter(Boolean));
+  const owned = new Set();
+  for (let offset = 0; offset < addresses.length; offset += 99) {
+    const batch = addresses.slice(offset, offset + 99);
+    const placeholders = batch.map(() => '?').join(',');
+    const { results } = await ctx.db.prepare(`
+      SELECT m.address AS address FROM user_mailboxes um
+      JOIN mailboxes m ON m.id = um.mailbox_id
+      WHERE um.user_id = ? AND m.address IN (${placeholders})
+    `).bind(uid, ...batch).all();
+    (results || []).forEach((row) => owned.add(row.address));
+  }
+  return owned;
 }
 
 async function recordBatchSendResults(db, userId, items, result) {

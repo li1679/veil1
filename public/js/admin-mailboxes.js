@@ -1,8 +1,11 @@
+import { actions } from './page-actions.js';
 import { ALL_MAILBOX_PAGE_SIZE_OPTIONS } from './admin-state.js';
 import { renderAllMailboxesView, renderEmailPagination } from './admin-mailbox-table.js';
 import { createMailboxViewerController } from './admin-mailbox-viewer.js';
 import { registerMailboxEditors } from './admin-mailbox-editors.js';
 import { getAvailableDomains, resetEmailPage } from './admin-utils.js';
+import { runExclusive, updateBatchProgress } from './async-actions.js';
+import { renderUiState } from './ui-state.js';
 
 export const createAdminMailboxController = ({ state, deps, domainSelector, inbox, home }) => {
     const { adminMailboxAPI, showToast, openIOSAlert, animateDelete, animateBatchDelete } = deps;
@@ -12,6 +15,7 @@ export const createAdminMailboxController = ({ state, deps, domainSelector, inbo
         const requestSeq = ++state.allMailboxesLoadSeq;
         abortPreviousLoad();
         state.allMailboxesLoadController = new AbortController();
+        document.getElementById('emailListBody').setAttribute('aria-busy', 'true');
         try {
             const response = await adminMailboxAPI.getAllMailboxes(readMailboxFilters(), { signal: state.allMailboxesLoadController.signal });
             if (requestSeq !== state.allMailboxesLoadSeq) return;
@@ -24,14 +28,15 @@ export const createAdminMailboxController = ({ state, deps, domainSelector, inbo
             renderDomainFilter();
         } catch (error) {
             if (error?.name === 'AbortError') return;
-            console.error('Failed to load mailboxes:', error);
-            showToast('加载邮箱失败');
+            document.getElementById('emailListBody').innerHTML = renderUiState({ title: error.message || '加载邮箱失败', description: '更改筛选条件后重试', tone: 'error' });
+        } finally {
+            if (requestSeq === state.allMailboxesLoadSeq) document.getElementById('emailListBody').setAttribute('aria-busy', 'false');
         }
     }
 
     function abortPreviousLoad() {
         if (!state.allMailboxesLoadController) return;
-        try { state.allMailboxesLoadController.abort(); } catch (_) { /* ignore stale request */ }
+        state.allMailboxesLoadController.abort();
     }
 
     function readMailboxFilters() {
@@ -102,20 +107,20 @@ export const createAdminMailboxController = ({ state, deps, domainSelector, inbo
         else bar.classList.remove('show');
     }
 
-    function registerGlobals() {
-        window.gotoEmailPage = gotoEmailPage;
-        window.changeEmailPageSize = changeEmailPageSize;
-        window.toggleSelectEmail = toggleSelectEmail;
-        window.toggleEmailDetails = toggleEmailDetails;
-        window.toggleSelectAllEmails = toggleSelectAllEmails;
-        window.cancelEmailSelection = cancelEmailSelection;
-        window.toggleLoginAllowed = toggleLoginAllowed;
-        window.deleteSingleMailbox = deleteSingleMailbox;
-        window.batchDeleteEmails = batchDeleteEmails;
-        window.batchToggleLoginEmails = batchToggleLoginEmails;
-        window.filterAllEmails = () => { resetEmailPage(state); loadAllMailboxes(); };
-        window.filterByDomain = window.filterAllEmails;
-        window.filterByUser = window.filterAllEmails;
+    function registerActions() {
+        actions.gotoEmailPage = gotoEmailPage;
+        actions.changeEmailPageSize = changeEmailPageSize;
+        actions.toggleSelectEmail = toggleSelectEmail;
+        actions.toggleEmailDetails = toggleEmailDetails;
+        actions.toggleSelectAllEmails = toggleSelectAllEmails;
+        actions.cancelEmailSelection = cancelEmailSelection;
+        actions.toggleLoginAllowed = (id) => runExclusive(`mailbox-login-${id}`, () => toggleLoginAllowed(id));
+        actions.deleteSingleMailbox = deleteSingleMailbox;
+        actions.batchDeleteEmails = batchDeleteEmails;
+        actions.batchToggleLoginEmails = (allow) => runExclusive('batch-mailbox-login', () => batchToggleLoginEmails(allow));
+        actions.filterAllEmails = () => { resetEmailPage(state); loadAllMailboxes(); };
+        actions.filterByDomain = actions.filterAllEmails;
+        actions.filterByUser = actions.filterAllEmails;
     }
 
     function gotoEmailPage(direction) {
@@ -123,7 +128,8 @@ export const createAdminMailboxController = ({ state, deps, domainSelector, inbo
         const totalPages = Math.max(1, Number(pageState.totalPages) || 1);
         if (direction === 'prev' && pageState.page > 1) pageState.page -= 1;
         else if (direction === 'next' && (pageState.page < totalPages || pageState.hasMore)) pageState.page += 1;
-        else if (!['prev', 'next'].includes(direction) && Number(direction) >= 1) pageState.page = Number(direction);
+        else if (Number.isInteger(Number(direction)) && Number(direction) >= 1 && Number(direction) <= totalPages) pageState.page = Number(direction);
+        else return;
         state.selectedEmailIds.clear();
         state.expandedEmailDetails.clear();
         loadAllMailboxes();
@@ -222,11 +228,12 @@ export const createAdminMailboxController = ({ state, deps, domainSelector, inbo
     async function removeSelectedMailboxes(count) {
         try {
             const ids = Array.from(state.selectedEmailIds);
-            const addresses = ids.map((id) => state.allMailboxes.find((item) => item.id === id)?.address).filter(Boolean);
-            await adminMailboxAPI.batchDelete(ids);
-            animateBatchDelete(ids, 'email-row-', () => finalizeMailboxRemoval(ids));
-            home.applyMailboxDeletionsToHome(addresses);
-            showToast(`已删除 ${count} 个邮箱`);
+            const result = await adminMailboxAPI.batchDelete(ids, { onProgress: updateBatchProgress });
+            const succeeded = result.results.filter((item) => item.success).map((item) => item.id);
+            const successfulAddresses = succeeded.map((id) => state.allMailboxes.find((item) => item.id === id)?.address).filter(Boolean);
+            finalizeMailboxRemoval(succeeded);
+            home.applyMailboxDeletionsToHome(successfulAddresses);
+            showToast(result.fail_count ? `已删除 ${result.success_count} 个，失败 ${result.fail_count} 个：${result.results.find((item) => !item.success).error}` : `已删除 ${result.success_count} 个邮箱`);
         } catch (error) {
             showToast(error.message || '删除失败');
         }
@@ -237,17 +244,20 @@ export const createAdminMailboxController = ({ state, deps, domainSelector, inbo
         if (count === 0) return;
         try {
             const ids = Array.from(state.selectedEmailIds);
-            await adminMailboxAPI.batchUpdateLogin(ids, allow);
-            state.allMailboxes.forEach((mailbox) => { if (state.selectedEmailIds.has(mailbox.id)) mailbox.is_login_allowed = allow; });
+            const result = await adminMailboxAPI.batchUpdateLogin(ids, allow);
+            const succeeded = new Set(result.results.filter((item) => item.success).map((item) => item.address));
+            state.allMailboxes.forEach((mailbox) => { if (succeeded.has(mailbox.address)) mailbox.is_login_allowed = allow; });
             renderAllMailboxes();
-            showToast(allow ? `已允许 ${count} 个邮箱登录` : `已禁止 ${count} 个邮箱登录`);
+            showToast(result.fail_count > 0
+                ? `已更新 ${result.success_count} 个，失败 ${result.fail_count} 个`
+                : (allow ? `已允许 ${result.success_count} 个邮箱登录` : `已禁止 ${result.success_count} 个邮箱登录`));
             cancelEmailSelection();
         } catch (error) {
             showToast(error.message || '操作失败');
         }
     }
 
-    registerGlobals();
+    registerActions();
     registerMailboxEditors({ state, deps, loadAllMailboxes, renderAllMailboxes });
     return { loadAllMailboxes, renderAllMailboxes, renderDomainFilter };
 };

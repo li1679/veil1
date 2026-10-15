@@ -1,4 +1,4 @@
-const REQUIRED_BINDINGS = ['TEMP_MAIL_DB', 'MAIL_EML', 'ASSETS'];
+const REQUIRED_BINDINGS = ['TEMP_MAIL_DB', 'MAIL_EML', 'ASSETS', 'SECURITY_RATE_LIMITER'];
 const REQUIRED_SECRETS = ['MAIL_DOMAIN', 'ADMIN_PASSWORD', 'JWT_TOKEN'];
 const OPTIONAL_SECRETS = [
   'ROOT_ADMIN_TOKEN',
@@ -36,6 +36,7 @@ function hasBinding(env, name) {
   if (name === 'TEMP_MAIL_DB') return Boolean(value && typeof value.prepare === 'function');
   if (name === 'MAIL_EML') return Boolean(value && (typeof value.put === 'function' || typeof value.get === 'function'));
   if (name === 'ASSETS') return Boolean(value && typeof value.fetch === 'function');
+  if (name === 'SECURITY_RATE_LIMITER') return Boolean(value && typeof value.idFromName === 'function' && typeof value.get === 'function');
   return Boolean(value);
 }
 

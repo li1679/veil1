@@ -9,9 +9,6 @@ export function normalizeEmailAddress(address) {
     return String(address || '').trim().toLowerCase();
 }
 
-export function getMailboxViewerPreviewText(email) {
-    return String(email?.text || email?.preview || '').trim();
-}
 
 export function getAvailableDomains(domainSelector) {
     return domainSelector.getDomains().map((domain) => String(domain || '').trim()).filter(Boolean);
@@ -49,7 +46,7 @@ export function updateUserInfo(state) {
         avatarEl.textContent = (state.currentUser.name || state.currentUser.username || 'A').substring(0, 2).toUpperCase();
     }
     if (nameEl && state.currentUser) nameEl.textContent = state.currentUser.name || state.currentUser.username;
-    if (badgeEl && state.currentUser) badgeEl.textContent = 'Super Admin';
+    if (badgeEl && state.currentUser) badgeEl.textContent = state.currentUser.role === 'StrictAdmin' ? '超级管理员' : state.currentUser.role;
 }
 
 export function applyUserManagementAccessUI(state) {
@@ -62,18 +59,6 @@ export function applyUserManagementAccessUI(state) {
     else {
         selectAll.classList.add('disabled');
         selectAll.classList.remove('checked');
-    }
-}
-
-export function closeMobileSidebarIfOpen() {
-    try {
-        if (window.matchMedia && !window.matchMedia('(max-width: 768px)').matches) return;
-        const sidebar = document.querySelector('.sidebar');
-        const overlay = document.querySelector('.sidebar-overlay');
-        if (sidebar) sidebar.classList.remove('open');
-        if (overlay) overlay.classList.remove('show');
-    } catch (_) {
-        // ignore viewport helper failures
     }
 }
 
@@ -91,6 +76,3 @@ export function resetEmailPage(state) {
     state.expandedEmailDetails.clear();
 }
 
-export function restoreDefaultEmailPageSize(state) {
-    state.allMailboxesPageState.limit = DEFAULT_ALL_MAILBOX_PAGE_SIZE;
-}

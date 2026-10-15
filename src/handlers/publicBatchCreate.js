@@ -1,4 +1,6 @@
 import { generateRandomId } from '../commonUtils.js';
+import { readInteger, RequestValidationError } from '../requestValidation.js';
+import { MAILBOX_LOCAL_PATTERN } from './mailboxUtils.js';
 
 export async function handlePublicBatchCreateEmails(ctx, body) {
   try {
@@ -6,7 +8,7 @@ export async function handlePublicBatchCreateEmails(ctx, body) {
     const request = buildBatchCreateRequest(ctx, payload);
     const emails = await createPublicEmails(ctx, request);
     const { invalidateSystemStatCache } = await import('../cacheHelper.js');
-    invalidateSystemStatCache('total_mailboxes');
+    invalidateSystemStatCache(ctx.db, 'total_mailboxes');
     return Response.json({ emails });
   } catch (e) {
     return Response.json({ error: String(e?.message || e) }, { status: 400 });
@@ -14,25 +16,33 @@ export async function handlePublicBatchCreateEmails(ctx, body) {
 }
 
 function buildBatchCreateRequest(ctx, payload) {
-  const count = Math.min(Math.max(parseInt(payload?.count ?? 1, 10) || 1, 1), 20);
-  const expiryDays = Math.min(Math.max(parseInt(payload?.expiryDays ?? 7, 10) || 7, 1), 30);
+  const count = readInteger(payload.count, { name: 'count', min: 1, max: 20, defaultValue: 1 });
+  const expiryDays = readInteger(payload.expiryDays, { name: 'expiryDays', min: 1, max: 30, defaultValue: 7 });
   const domain = choosePublicDomain(ctx.availableDomains, payload?.domain);
+  const basePrefix = readValidPrefix(payload.prefix);
+  if (count > 1 && basePrefix.length > 58) throw new RequestValidationError('批量创建时邮箱前缀最多58位');
   return {
     count,
     domain,
-    basePrefix: readValidPrefix(payload?.prefix),
+    basePrefix,
     expiresAt: ctx.formatD1Timestamp(Date.now() + expiryDays * 24 * 60 * 60 * 1000)
   };
 }
 
 function choosePublicDomain(domains, preferredDomain) {
-  const normalized = String(preferredDomain || '').trim().toLowerCase();
-  return normalized && domains.includes(normalized) ? normalized : domains[0];
+  if (preferredDomain === undefined) return domains[0];
+  if (typeof preferredDomain !== 'string') throw new RequestValidationError('邮箱域名必须为字符串');
+  const normalized = preferredDomain.trim().toLowerCase();
+  if (!domains.includes(normalized)) throw new RequestValidationError('无效的邮箱域名');
+  return normalized;
 }
 
 function readValidPrefix(prefix) {
-  const requested = String(prefix || '').trim().toLowerCase();
-  return /^[a-z0-9._-]{1,64}$/i.test(requested) ? requested : '';
+  if (prefix === undefined || prefix === '') return '';
+  if (typeof prefix !== 'string') throw new RequestValidationError('邮箱前缀必须为字符串');
+  const requested = prefix.trim().toLowerCase();
+  if (!MAILBOX_LOCAL_PATTERN.test(requested)) throw new RequestValidationError('非法邮箱前缀');
+  return requested;
 }
 
 async function createPublicEmails(ctx, request) {
@@ -75,7 +85,7 @@ async function insertPublicMailbox(ctx, address, local, request) {
   const row = results?.[0] || {};
   if (row?.id) {
     const { updateMailboxIdCache } = await import('../cacheHelper.js');
-    updateMailboxIdCache(address, row.id);
+    updateMailboxIdCache(ctx.db, address, row.id);
   }
   return { address, expiresAt: request.expiresAt, createdAt: row?.created_at || null };
 }

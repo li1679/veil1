@@ -1,16 +1,18 @@
 import { deleteMailboxByAddress, request } from './api-core.js';
 import { mapEmailDetail, mapEmailItem, normalizeMailboxResponse } from './api-mappers.js';
+import { runBatch } from './async-actions.js';
 
 const MAILBOX_CLEAR_BATCH_LIMIT = 50;
 
 export const mailboxAPI = {
-    async getMailboxes(params = {}) {
+    async getMailboxes(params = {}, options = {}) {
         const queryParams = new URLSearchParams();
         if (params.limit) queryParams.set('limit', String(params.limit));
         if (params.offset) queryParams.set('offset', String(params.offset));
         if (params.scope) queryParams.set('scope', String(params.scope));
+        if (params.search) queryParams.set('q', params.search);
         const queryString = queryParams.toString();
-        const response = await request(`/api/mailboxes${queryString ? '?' + queryString : ''}`);
+        const response = await request(`/api/mailboxes${queryString ? '?' + queryString : ''}`, options);
         return normalizeMailboxResponse(response);
     },
 
@@ -42,16 +44,19 @@ export const mailboxAPI = {
         });
     },
 
+    async pin(address) {
+        return request(`/api/mailboxes/pin?address=${encodeURIComponent(address)}`, { method: 'POST' });
+    },
+
     async delete(address) {
         return deleteMailboxByAddress(address);
     },
 
-    async clearAll(params = {}) {
+    async clearAll(params = {}, options = {}) {
         const allMailboxes = await fetchAllMailboxes(params);
-        if (allMailboxes.length === 0) return { success: true, deleted: 0 };
-        const results = await Promise.allSettled(allMailboxes.map((item) => deleteMailboxByAddress(item.address)));
-        const deleted = results.filter((result) => result.status === 'fulfilled').length;
-        return { success: true, deleted };
+        const result = await runBatch(allMailboxes.map((item) => item.address), deleteMailboxByAddress, options);
+        if (!result.success) throw new Error(`已删除 ${result.success_count} 个邮箱，${result.fail_count} 个失败：${result.results.find((item) => !item.success).error}`);
+        return { success: true, deleted: result.success_count };
     },
 };
 
@@ -70,14 +75,14 @@ async function fetchAllMailboxes(params) {
 }
 
 export const emailAPI = {
-    async getEmails(mailboxAddress) {
-        const response = await request(`/api/emails?mailbox=${encodeURIComponent(mailboxAddress)}`);
+    async getEmails(mailboxAddress, options = {}) {
+        const response = await request(`/api/emails?mailbox=${encodeURIComponent(mailboxAddress)}`, options);
         const list = Array.isArray(response) ? response : (response.emails || []);
         return { emails: list.map(mapEmailItem) };
     },
 
-    async getEmail(id) {
-        const response = await request(`/api/email/${id}`);
+    async getEmail(id, options = {}) {
+        const response = await request(`/api/email/${id}`, options);
         const email = response && response.email ? response.email : response;
         return { email: mapEmailDetail(email) };
     },

@@ -1,77 +1,43 @@
 import { showToast, escapeHtml } from './common.js';
-import { registerDomainSelectorGlobals } from './domain-selector-events.js';
+import { registerDomainSelectorActions } from './domain-selector-events.js';
+import { getBulkGenerateLimit } from './mailbox-config.js';
 
-export function createDomainSelector(opts) {
-    const state = {
-        domains: [],
-        selectedDomain: '',
-        randomDomainSuffix: false,
-        prefixMode: 'random',
-        prefixLength: 12,
-        generateCount: 1,
-    };
-    const context = { state, updateRandomDomainUI: () => updateRandomDomainUI(state) };
-    registerDomainSelectorGlobals(context);
+/** Owns generation preferences; the native select owns menu/focus behavior. */
+export function createDomainSelector({ domainAPI, role }) {
+    const state = { domains: [], selectedDomain: '', randomDomainSuffix: false, prefixMode: 'random', prefixLength: 12, generateCount: 1, maxGenerateCount: getBulkGenerateLimit(role) };
+    const listeners = new Set();
+    const notify = () => listeners.forEach((listener) => listener());
+    registerDomainSelectorActions({ state, notify });
+    async function loadDomains() {
+        const select = document.getElementById('domainSelect');
+        select.disabled = true;
+        try {
+            const response = await domainAPI.getDomains();
+            if (!Array.isArray(response.domains) || !response.domains.length) throw new Error('尚未配置可用邮箱域名');
+            state.domains = response.domains;
+            if (!state.domains.includes(state.selectedDomain)) state.selectedDomain = state.domains[0];
+            select.innerHTML = state.domains.map((domain) => `<option value="${escapeHtml(domain)}">${escapeHtml(domain)}</option>`).join('');
+            select.value = state.selectedDomain;
+            select.disabled = state.randomDomainSuffix;
+            notify();
+            return true;
+        } catch (error) {
+            state.domains = []; state.selectedDomain = '';
+            select.innerHTML = '<option>域名加载失败，请重试</option>';
+            notify();
+            showToast(error.message || '加载域名失败');
+            return false;
+        }
+    }
     return {
-        loadDomains: () => loadDomains(opts.domainAPI, state),
+        loadDomains,
+        onChange: (listener) => { listeners.add(listener); return () => listeners.delete(listener); },
         getDomains: () => state.domains,
         getSelectedDomain: () => state.selectedDomain,
-        getDomainForGeneration: () => getDomainForGeneration(state),
+        getDomainForGeneration: () => state.randomDomainSuffix ? state.domains[Math.floor(Math.random() * state.domains.length)] : state.selectedDomain,
         getPrefixMode: () => state.prefixMode,
         getPrefixLength: () => state.prefixLength,
-        getGenerateCount: () => clampGenerateCount(state.generateCount),
-        isRandomDomain: () => Boolean(state.randomDomainSuffix),
+        getGenerateCount: () => Math.max(1, Math.min(state.maxGenerateCount, state.generateCount)),
+        isRandomDomain: () => state.randomDomainSuffix,
     };
-}
-
-function clampGenerateCount(value) {
-    const n = Math.floor(Number(value) || 1);
-    return Math.max(1, Math.min(100, n));
-}
-
-async function loadDomains(domainAPI, state) {
-    try {
-        const response = await domainAPI.getDomains();
-        state.domains = response.domains || [];
-        if (state.domains.length > 0) {
-            state.selectedDomain = state.domains[0];
-            renderDomainDropdown(state);
-        }
-    } catch (error) {
-        console.error('Failed to load domains:', error);
-        showToast('加载域名失败');
-    }
-}
-
-function renderDomainDropdown(state) {
-    const trigger = document.getElementById('selectedDomain');
-    const optionsList = document.getElementById('domainOptions');
-    if (trigger) trigger.textContent = state.selectedDomain;
-    if (!optionsList) return;
-    optionsList.innerHTML = state.domains.map((domain) => renderDomainOption(domain, state.selectedDomain)).join('');
-}
-
-function renderDomainOption(domain, selectedDomain) {
-    const safeDomain = escapeHtml(domain);
-    const selectedClass = domain === selectedDomain ? 'selected' : '';
-    return `<li class="option ${selectedClass}" data-action="select-domain" data-domain="${safeDomain}">${safeDomain}</li>`;
-}
-
-function getDomainForGeneration(state) {
-    if (state.randomDomainSuffix && Array.isArray(state.domains) && state.domains.length > 0) {
-        return state.domains[Math.floor(Math.random() * state.domains.length)];
-    }
-    return state.selectedDomain || state.domains?.[0] || '';
-}
-
-function updateRandomDomainUI(state) {
-    const sw = document.getElementById('randomDomainSwitch');
-    if (sw) {
-        sw.classList.toggle('on', state.randomDomainSuffix);
-        sw.setAttribute('aria-checked', state.randomDomainSuffix ? 'true' : 'false');
-    }
-    const wrapper = document.getElementById('domainSelectWrapper');
-    if (wrapper) wrapper.classList.toggle('is-disabled', state.randomDomainSuffix);
-    const dropdown = document.getElementById('domainOptions');
-    if (state.randomDomainSuffix && dropdown) dropdown.classList.remove('show');
 }

@@ -1,6 +1,7 @@
 import { deleteMailboxByAddress, normalizeId, request } from './api-core.js';
 import { mapAdminMailbox, normalizeMailboxResponse } from './api-mappers.js';
 import { adminMailboxCache } from './api-state.js';
+import { runBatch } from './async-actions.js';
 
 export const adminMailboxAPI = {
     async getAllMailboxes(params = {}, requestOptions = {}) {
@@ -41,11 +42,8 @@ export const adminMailboxAPI = {
         });
     },
 
-    async batchDelete(ids) {
-        const addresses = mapIdsToAddresses(ids);
-        const results = await Promise.allSettled(addresses.map((address) => deleteMailboxByAddress(address)));
-        const deleted = results.filter((result) => result.status === 'fulfilled').length;
-        return { success: true, deleted };
+    async batchDelete(ids, options = {}) {
+        return runBatch(ids, (id) => adminMailboxAPI.delete(id), options);
     },
 };
 
@@ -103,5 +101,9 @@ function updatePassword(address, data) {
 }
 
 function mapIdsToAddresses(ids) {
-    return (ids || []).map((id) => adminMailboxCache.get(normalizeId(id))).filter(Boolean);
+    return (ids || []).map((id) => {
+        const address = adminMailboxCache.get(normalizeId(id));
+        if (!address) throw new Error('选中的邮箱已不在当前页，请刷新后重试');
+        return address;
+    });
 }

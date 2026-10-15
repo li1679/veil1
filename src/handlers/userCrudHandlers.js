@@ -1,19 +1,32 @@
 import { createUser, getTotalMailboxCount, listUsersWithCounts, updateUser } from '../database.js';
+import { readBoolean, RequestValidationError } from '../requestValidation.js';
 import {
   hashOptionalPassword,
   mapUniqueConstraintError,
   normalizeDisplayName,
   normalizeUserStatus,
   readUserIdFromPath,
-  readUserListQuery
+  readUserListQuery,
+  validateUserPayload
 } from './userUtils.js';
 
 export async function handleRealListUsers(ctx) {
   if (!ctx.isStrictAdmin()) return new Response('Forbidden', { status: 403 });
   try {
-    const list = await listUsersWithCounts(ctx.db, readUserListQuery(ctx.url));
-    return Response.json((list || []).map((user) => ({ ...user, is_super_admin: ctx.isSuperAdminName(user?.username) })));
+    const query = readUserListQuery(ctx.url);
+    if (ctx.url.searchParams.get('scope') === 'options') {
+      const { results } = await ctx.db.prepare('SELECT id, username FROM users ORDER BY id LIMIT ? OFFSET ?').bind(query.limit, query.offset).all();
+      return Response.json(results);
+    }
+    const list = await listUsersWithCounts(ctx.db, query);
+    const users = (list || []).map((user) => ({ ...user, is_super_admin: ctx.isSuperAdminName(user.username) }));
+    if (!ctx.url.searchParams.has('page')) return Response.json(users);
+    const { results } = await ctx.db.prepare('SELECT COUNT(1) AS total FROM users').all();
+    const total = results[0].total;
+    const page = Math.floor(query.offset / query.limit) + 1;
+    return Response.json({ users, pagination: { page, limit: query.limit, total, totalPages: Math.max(1, Math.ceil(total / query.limit)) } });
   } catch (_) {
+    if (_ instanceof RequestValidationError) return new Response(_.message, { status: 400 });
     return new Response('查询失败', { status: 500 });
   }
 }
@@ -25,14 +38,16 @@ export async function handleRealCreateUser(ctx, body) {
     const validation = await buildCreateUserPayload(ctx, payload);
     if (validation instanceof Response) return validation;
     const created = await createUser(ctx.db, validation);
-    if (payload.can_send) await updateUser(ctx.db, created.id, { can_send: 1 });
+    if (payload.can_send !== undefined && readBoolean(payload.can_send, 'can_send')) await updateUser(ctx.db, created.id, { can_send: 1 });
     return Response.json(await loadUserById(ctx.db, created.id) || created);
   } catch (e) {
+    if (e instanceof RequestValidationError) return new Response(e.message, { status: 400 });
     return mapUniqueConstraintError(e?.message || e, '创建失败');
   }
 }
 
 async function buildCreateUserPayload(ctx, payload) {
+  validateUserPayload(payload, { creating: true });
   const username = String(payload.username || '').trim().toLowerCase();
   if (!username) return new Response('用户名不能为空', { status: 400 });
   if (ctx.isSuperAdminName(username)) return new Response('该用户名为超级管理员保留', { status: 400 });
@@ -43,7 +58,7 @@ async function buildCreateUserPayload(ctx, payload) {
     name: normalizeDisplayName(payload.name, username),
     passwordHash,
     role: 'user',
-    mailboxLimit: Number(payload.mailboxLimit || 10),
+    mailboxLimit: Number(payload.mailboxLimit ?? 10),
     status: normalizeUserStatus(payload.status)
   };
 }
@@ -69,19 +84,21 @@ export async function handleRealUpdateUser(ctx, body) {
     await updateUser(ctx.db, id, fields);
     return Response.json({ success: true });
   } catch (e) {
+    if (e instanceof RequestValidationError) return new Response(e.message, { status: 400 });
     return mapUniqueConstraintError(e?.message || e, '更新失败');
   }
 }
 
 async function buildUpdateUserFields(ctx, target, payload) {
+  validateUserPayload(payload);
   const fields = {};
   if (typeof payload.username === 'string' && payload.username.trim()) {
     fields.username = String(payload.username || '').trim().toLowerCase();
     if (ctx.isSuperAdminName(fields.username)) return new Response('该用户名为超级管理员保留', { status: 400 });
   }
   if (typeof payload.name !== 'undefined') fields.name = normalizeDisplayName(payload.name, fields.username || target.username);
-  if (typeof payload.mailboxLimit !== 'undefined') fields.mailbox_limit = Math.max(0, Number(payload.mailboxLimit));
-  if (typeof payload.can_send !== 'undefined') fields.can_send = payload.can_send ? 1 : 0;
+  if (payload.mailboxLimit !== undefined) fields.mailbox_limit = Number(payload.mailboxLimit);
+  if (payload.can_send !== undefined) fields.can_send = readBoolean(payload.can_send, 'can_send') ? 1 : 0;
   if (typeof payload.status !== 'undefined') fields.status = normalizeUserStatus(payload.status);
   if (typeof payload.password === 'string' && payload.password) {
     const passwordHash = await hashOptionalPassword(payload.password);

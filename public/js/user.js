@@ -2,7 +2,7 @@ import { domainAPI, emailAPI, mailboxAPI, quotaAPI } from './api.js';
 import { canSend, logout, requireUser } from './auth.js';
 import {
     animateDelete, copyText, escapeHtml, formatTime, getStorage,
-    initCommon, openIOSAlert, removeStorage, setStorage, showToast
+    initCommon, openIOSAlert, removeStorage, setStorage, showToast, reportPageError
 } from './common.js';
 import { createComposeController } from './compose.js';
 import { createDomainSelector } from './domain-selector.js';
@@ -10,6 +10,12 @@ import { createInboxController } from './inbox.js';
 import { createUserHomeController } from './user-home.js';
 import { createUserPageState } from './user-state.js';
 import { initUserEventListeners } from './user-events.js';
+
+import { mountHomeTemplate } from './home-template.js';
+import { mountSharedOverlays } from './shared-overlays.js';
+
+mountHomeTemplate(document.querySelector('.user-content'), 'User');
+mountSharedOverlays();
 
 const state = createUserPageState();
 const domainSelector = createDomainSelector({ domainAPI });
@@ -21,8 +27,9 @@ function updateUserInfo() {
     const sendBtn = document.getElementById('sendActionBtn');
     if (avatarEl && state.currentUser) avatarEl.textContent = (state.currentUser.name || state.currentUser.username || 'U').substring(0, 2).toUpperCase();
     if (nameEl && state.currentUser) nameEl.textContent = state.currentUser.name || state.currentUser.username;
-    if (quotaEl && state.currentUser) quotaEl.textContent = `已生成 ${state.currentUser.quotaUsed || 0}/${state.currentUser.quota || 10} 个邮箱`;
+    if (quotaEl && state.currentUser) quotaEl.textContent = `已生成 ${state.currentUser.quotaUsed ?? 0}/${state.currentUser.quota ?? 10} 个邮箱`;
     if (sendBtn) sendBtn.classList.toggle('is-allowed', canSend(state.currentUser));
+    home.syncGenerateButton();
 }
 
 async function refreshQuota() {
@@ -35,44 +42,23 @@ async function refreshQuota() {
             updateUserInfo();
         }
     } catch (error) {
-        console.error('Failed to refresh quota:', error);
+        showToast(error.message || '配额刷新失败，稍后重试');
     }
 }
 
-async function loadInbox() {
-    if (!state.currentEmail) return;
-    try {
-        const response = await emailAPI.getEmails(state.currentEmail);
-        const emails = response.emails || [];
-        inbox.renderInbox(emails);
-        updateHistoryEmailCount(emails.length);
-    } catch (error) {
-        console.error('Failed to load inbox:', error);
-        inbox.renderError(error.message || '加载邮件失败');
-    }
-}
 
-function updateHistoryEmailCount(emailCount) {
-    const historyItem = state.emailHistory.find((item) => item.email === state.currentEmail);
-    if (!historyItem || historyItem.emailCount === emailCount) return;
-    historyItem.emailCount = emailCount;
-    home.renderHistory();
-}
-
-const inbox = createInboxController({ emailAPI, loadInbox, getActiveEmail: () => state.currentEmail });
+const inbox = createInboxController({ emailAPI, getActiveEmail: () => state.currentEmail, onEmails: (emails, address, total) => home.updateEmailCount(address, total) });
 
 createComposeController({
     sendAPI: emailAPI,
     getFromAddress: () => state.currentEmail,
     canSend: () => canSend(state.currentUser),
-    hasSenderName: true,
 });
 
 const home = createUserHomeController({
     state,
     domainSelector,
     inbox,
-    loadInbox,
     refreshQuota,
     deps: {
         mailboxAPI, emailAPI, showToast, copyText, openIOSAlert, animateDelete,
@@ -85,10 +71,11 @@ async function init() {
     if (!state.currentUser) return;
     initCommon();
     updateUserInfo();
-    await refreshQuota();
-    await domainSelector.loadDomains();
-    await home.loadHistory();
     initUserEventListeners({ logout, inbox });
+    await domainSelector.loadDomains();
+    home.syncGenerateButton();
+    await home.loadHistory();
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) void refreshQuota(); });
 }
 
-init();
+init().catch(reportPageError);

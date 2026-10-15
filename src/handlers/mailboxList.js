@@ -12,8 +12,9 @@ export async function handleListMailboxes(ctx) {
       return await listAllMailboxes(ctx, query);
     }
     return await listOwnedMailboxes(ctx, query);
-  } catch (_) {
-    return Response.json([]);
+  } catch (error) {
+    console.error('查询邮箱列表失败:', error);
+    return new Response('查询邮箱列表失败', { status: 500 });
   }
 }
 

@@ -1,5 +1,5 @@
 export function animateDelete(el, callback, delay = 400) {
-    if (!el) return;
+    if (!el) { callback?.(); return; }
     el.classList.add('deleting');
     setTimeout(() => {
         if (callback) callback();

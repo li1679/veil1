@@ -40,13 +40,8 @@ export async function checkSendPermission(ctx) {
   if (ctx.isStrictAdmin()) return true;
   if (!payload.userId) return false;
 
-  const { getCachedSystemStat } = await import('../cacheHelper.js');
-  const cacheKey = `user_can_send_${payload.userId}`;
-  const canSend = await getCachedSystemStat(ctx.db, cacheKey, async (db) => {
-    const { results } = await db.prepare('SELECT can_send FROM users WHERE id = ?').bind(payload.userId).all();
-    return results?.[0]?.can_send ? 1 : 0;
-  });
-  return canSend === 1;
+  const { results } = await ctx.db.prepare('SELECT can_send FROM users WHERE id = ?').bind(payload.userId).all();
+  return results?.[0]?.can_send === 1;
 }
 
 export function requireResendApiKey(resendApiKey) {

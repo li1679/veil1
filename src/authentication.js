@@ -1,4 +1,5 @@
 ﻿export const COOKIE_NAME = 'iding-session';
+export const SESSION_LIFETIME_SECONDS = 24 * 60 * 60;
 
 /**
  * 创建JWT令牌
@@ -8,7 +9,8 @@
  */
 export async function createJwt(secret, extraPayload = {}) {
   const header = { alg: 'HS256', typ: 'JWT' };
-  const payload = { exp: Math.floor(Date.now() / 1000) + 24 * 60 * 60, ...extraPayload };
+  const now = Math.floor(Date.now() / 1000);
+  const payload = { ...extraPayload, iat: now, exp: now + SESSION_LIFETIME_SECONDS };
   const encoder = new TextEncoder();
   const data = base64UrlEncode(JSON.stringify(header)) + '.' + base64UrlEncode(JSON.stringify(payload));
   const key = await crypto.subtle.importKey(
@@ -36,6 +38,8 @@ export async function verifyJwt(secret, cookieHeader) {
   const parts = token.split('.');
   if (parts.length !== 3) return false;
   try {
+    const header = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[0])));
+    if (header.alg !== 'HS256' || header.typ !== 'JWT') return false;
     const encoder = new TextEncoder();
     const key = await crypto.subtle.importKey(
       'raw',
@@ -47,7 +51,7 @@ export async function verifyJwt(secret, cookieHeader) {
     const valid = await crypto.subtle.verify('HMAC', key, base64UrlDecode(parts[2]), encoder.encode(parts[0] + '.' + parts[1]));
     if (!valid) return false;
     const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[1])));
-    if (payload.exp <= Math.floor(Date.now() / 1000)) return false;
+    if (!Number.isSafeInteger(payload.exp) || payload.exp <= Math.floor(Date.now() / 1000)) return false;
     return payload; // 返回 payload（包含 role 等）
   } catch (_) {
     return false;
@@ -61,14 +65,9 @@ export async function verifyJwt(secret, cookieHeader) {
  * @returns {string} Cookie字符串
  */
 export function buildSessionCookie(token, reqUrl = '') {
-  try{
-    const u = new URL(reqUrl || 'http://localhost/');
-    const isHttps = (u.protocol === 'https:');
-    const secureFlag = isHttps ? ' Secure;' : '';
-    return `${COOKIE_NAME}=${token}; HttpOnly;${secureFlag} Path=/; SameSite=Strict; Max-Age=86400`;
-  }catch(_){
-    return `${COOKIE_NAME}=${token}; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400`;
-  }
+  const isHttps = new URL(reqUrl || 'http://localhost/').protocol === 'https:';
+  const secureFlag = isHttps ? ' Secure;' : '';
+  return `${COOKIE_NAME}=${token}; HttpOnly;${secureFlag} Path=/; SameSite=Strict; Max-Age=${SESSION_LIFETIME_SECONDS}`;
 }
 
 /**
@@ -77,12 +76,13 @@ export function buildSessionCookie(token, reqUrl = '') {
  * @returns {string} Base64URL编码后的字符串
  */
 function base64UrlEncode(data) {
-  const s = typeof data === 'string' ? data : String.fromCharCode(...(data instanceof Uint8Array ? data : new Uint8Array()));
+  const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+  const s = String.fromCharCode(...bytes);
   return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+/g, '');
 }
 
 /**
- * 验证邮箱登录（支持自定义密码，兼容默认密码为邮箱地址）
+ * 验证邮箱登录（支持自定义密码，默认密码为邮箱地址）
  * @param {string} emailAddress - 邮箱地址
  * @param {string} password - 输入的密码
  * @param {object} DB - 数据库连接对象
@@ -95,7 +95,7 @@ export async function verifyMailboxLogin(emailAddress, password, DB) {
     const email = emailAddress.toLowerCase().trim();
     
     // 检查邮箱是否存在于数据库中
-    const result = await DB.prepare('SELECT id, address, local_part, domain, password_hash, can_login FROM mailboxes WHERE address = ?')
+    const result = await DB.prepare('SELECT id, address, local_part, domain, password_hash, can_login FROM mailboxes WHERE address = ? AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)')
       .bind(email).all();
     
     if (result?.results?.length > 0) {
@@ -113,7 +113,7 @@ export async function verifyMailboxLogin(emailAddress, password, DB) {
         // 如果有存储的密码哈希，验证哈希密码
         passwordValid = await verifyPassword(password, mailbox.password_hash);
       } else {
-        // 兼容性：如果没有密码哈希，使用邮箱地址作为默认密码
+        // 尚未设置自定义密码时，使用邮箱地址作为默认密码
         passwordValid = (password === email);
       }
       
@@ -139,19 +139,6 @@ export async function verifyMailboxLogin(emailAddress, password, DB) {
     console.error('Mailbox login verification error:', error);
     return false;
   }
-}
-
-/**
- * 兼容性：旧版 SHA-256 直接哈希（仅用于回退验证）
- * @param {string} text - 要哈希的文本
- * @returns {Promise<string>} 哈希后的十六进制字符串
- */
-async function sha256Hex(text) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(String(text ?? ''));
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 const PBKDF2_ITERATIONS_MIN = 50000;
@@ -217,25 +204,16 @@ export async function verifyPassword(rawPassword, hashed) {
   try {
     const stored = String(hashed || '').trim();
 
-    // 1) 新格式：PBKDF2-SHA256
-    // 格式：pbkdf2$sha256$<iterations>$<salt_b64>$<hash_b64>
-    if (stored.startsWith(PBKDF2_FORMAT_PREFIX)) {
-      const parts = stored.split('$');
-      if (parts.length === 5 && parts[0] === 'pbkdf2' && parts[1] === 'sha256') {
-        const parsedIterations = parseInt(parts[2] || '0', 10);
-        if (!Number.isFinite(parsedIterations)) return false;
-        const iterations = Math.min(PBKDF2_ITERATIONS_MAX, Math.max(PBKDF2_ITERATIONS_MIN, parsedIterations));
-        const salt = base64ToBytes(parts[3] || '');
-        const expected = base64ToBytes(parts[4] || '');
-        if (!salt.length || !expected.length) return false;
-        const derived = await pbkdf2Sha256Bytes(rawPassword, salt, iterations, expected.length);
-        return timingSafeEqual(derived, expected);
-      }
-    }
-
-    // 2) 旧格式回退：SHA-256(hex) 直接哈希（兼容历史数据）
-    const hex = (await sha256Hex(rawPassword)).toLowerCase();
-    return hex === stored.toLowerCase();
+    if (!stored.startsWith(PBKDF2_FORMAT_PREFIX)) return false;
+    const parts = stored.split('$');
+    if (parts.length !== 5 || parts[0] !== 'pbkdf2' || parts[1] !== 'sha256') return false;
+    const iterations = Number(parts[2]);
+    if (!Number.isInteger(iterations) || iterations < PBKDF2_ITERATIONS_MIN || iterations > PBKDF2_ITERATIONS_MAX) return false;
+    const salt = base64ToBytes(parts[3]);
+    const expected = base64ToBytes(parts[4]);
+    if (salt.length !== PBKDF2_SALT_BYTES || expected.length !== PBKDF2_HASH_BYTES) return false;
+    const derived = await pbkdf2Sha256Bytes(rawPassword, salt, iterations, PBKDF2_HASH_BYTES);
+    return timingSafeEqual(derived, expected);
   } catch (_) {
     return false;
   }

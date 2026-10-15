@@ -50,6 +50,15 @@ export async function handleApiRequest(request, db, mailDomains, options = {
   mailboxOnly: false
 }) {
   const ctx = createApiContext(request, db, mailDomains, options);
+  const bodylessPaths = ['/api/mailboxes/reset-password', '/api/mailboxes/pin'];
+  const bodyless = bodylessPaths.includes(ctx.path) || /^\/api\/send\/[^/]+\/cancel$/.test(ctx.path);
+  if (['POST', 'PUT', 'PATCH'].includes(ctx.method) && !bodyless) {
+    try {
+      await ctx.readJsonBody();
+    } catch (error) {
+      return new Response(error instanceof SyntaxError ? '请求体必须为有效的 JSON' : error.message, { status: 400 });
+    }
+  }
   const guard = await applyMailboxOnlyGuard(ctx);
   if (guard) return guard;
   if (ctx.path.startsWith('/api/public/')) return handlePublicApi(ctx);

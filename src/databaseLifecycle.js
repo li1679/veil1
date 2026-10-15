@@ -1,4 +1,5 @@
 import { clearExpiredCache } from './cacheHelper.js';
+import { ensureIntegritySchema } from './databaseIntegrity.js';
 import {
   REQUIRED_SCHEMA,
   createSchemaIndexes,
@@ -6,27 +7,27 @@ import {
   validateRequiredSchema
 } from './databaseSchema.js';
 
-let isFirstInit = true;
+const initializations = new WeakMap();
 
 export async function initDatabase(db) {
-  try {
-    clearExpiredCache();
-    if (isFirstInit) {
-      await performFirstTimeSetup(db);
-      isFirstInit = false;
-      return;
-    }
-    await db.exec('PRAGMA foreign_keys = ON;');
-  } catch (error) {
-    console.error('数据库初始化失败:', error);
-    throw error;
+  clearExpiredCache(db);
+  let initialization = initializations.get(db);
+  if (!initialization) {
+    initialization = performFirstTimeSetup(db).catch((error) => {
+      initializations.delete(db);
+      console.error('数据库初始化失败:', error);
+      throw error;
+    });
+    initializations.set(db, initialization);
   }
+  await initialization;
 }
 
 async function performFirstTimeSetup(db) {
   if (!(await hasRequiredTables(db))) {
     await createSchemaTables(db);
   }
+  await ensureIntegritySchema(db);
   await validateRequiredSchema(db);
   await createSchemaIndexes(db);
   await db.exec('PRAGMA foreign_keys = ON;');
@@ -45,6 +46,7 @@ async function hasRequiredTables(db) {
 
 export async function setupDatabase(db) {
   await createSchemaTables(db);
+  await ensureIntegritySchema(db);
   await validateRequiredSchema(db);
   await createSchemaIndexes(db);
   await db.exec('PRAGMA foreign_keys = ON;');

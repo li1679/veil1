@@ -128,6 +128,8 @@ curl -X POST \
 
 请求体：`{ "username": "...", "password": "..." }`
 
+用户名和密码必须为字符串；用户名最多254位，登录密码最多1024位。密码首尾空格不会被删除。
+
 **Turnstile 人机验证（可选）**：
 
 - 当 Workers Secret 配置 `TURNSTILE_SECRET_KEY` 后，本接口会**强制**校验 Turnstile token（失败返回 `403`，纯文本）。
@@ -149,7 +151,7 @@ curl -X POST \
 
 - 管理员：`username == ADMIN_NAME` 且 `password == ADMIN_PASSWORD`
 - 普通用户：命中 `users` 表并通过 `password_hash` 校验
-- 邮箱用户：`username` 为邮箱地址且该邮箱 `can_login=1`，密码为邮箱默认密码（兼容）或自定义密码
+- 邮箱用户：`username` 为邮箱地址且邮箱未过期、`can_login=1`，密码为邮箱地址或自定义密码（默认密码行为不变）
 
 成功返回（示例，字段随角色略有差异）：
 
@@ -164,6 +166,8 @@ curl -X POST \
 #### `GET /api/session`
 
 返回当前会话解析后的信息（含 `strictAdmin` / 配额等）。Root Admin Override 也可调用。
+
+Cookie 会话有效期为24小时。已通过身份状态校验的成功 API 请求，在剩余有效期不超过6小时时会重新签发 Cookie；已过期令牌不会续期。Root Token 不换发 Cookie。用户删除、改名、停用，以及邮箱删除、过期、禁止登录，均会阻止该身份继续访问 API。
 
 ---
 
@@ -185,27 +189,32 @@ curl -X POST \
 
 请求体（全部可选）：
 
-- `domain`: 指定域名（必须在 `/api/domains` 返回列表内，否则自动使用第一个域名）
+- `domain`: 指定域名，必须在 `/api/domains` 返回列表内；无效值返回400，省略时使用第一个域名
 - `prefix_mode`: `random` | `name`（默认 `random`）
-- `length`: 前缀长度（默认 12）
+- `length`: 4-32的整数（默认12），不再静默截断小数或越界值
+- `expiry`: `1h` | `24h` | `3d` | `permanent`；省略或传 `null` 时永久，无效值返回400
 
 响应：
 
 ```json
-{ "address": "xxxx@domain.com", "expires": 1700000000000 }
+{ "address": "xxxx@domain.com" }
 ```
 
-> `expires` 仍为前端展示用途（1 小时）。真正的到期删除取决于 `mailboxes.expires_at`（例如 `/api/public/batch-create-emails` 的 `expiryDays`，以及收件 Soft-TTL 自动创建）。
+> 真正的到期时间存储在 `mailboxes.expires_at`；创建接口不会自动生成仅供展示的1小时到期时间。
+
+#### `POST /api/generate-bulk`
+
+参数同 `/api/generate`，增加 `count`（必填正整数；普通用户最多50，管理员最多100）和 `random_domain`（布尔值或0/1）。自定义前缀不支持批量生成。无效数量返回400，不再静默压缩到上限。
 
 #### `POST /api/create`（自定义前缀）
 
 请求体：
 
-- `prefix`（或 `local`）：邮箱 local-part（仅允许 `a-z0-9._-`，1~64）
+- `prefix`（或 `local`）：字符串，仅允许 `a-z0-9._-`，1-64位；不允许首尾点号或连续点号
 - `domain`：域名（可选）
 - `domainIndex`：域名索引（可选，`domain` 不传时生效）
 
-响应同上：`{ "address": "...", "expires": ... }`
+响应：`{ "address": "..." }`。`expiry` 规则同生成接口。
 
 常见错误：
 
@@ -243,6 +252,8 @@ curl -X POST \
 - `email_count`：邮件数量
 
 #### `DELETE /api/mailboxes?address=<邮箱地址>`
+
+邮件记录删除时，R2 原件引用会在同一数据库事务中进入 `r2_delete_queue`；原件由 Cron 最终清理，失败保留队列供重试。此机制也覆盖单封删除、清空邮箱和用户删除。
 
 删除邮箱与其邮件。
 
@@ -285,7 +296,7 @@ curl -X POST \
 
 #### `POST /api/mailboxes/reset-password?address=<邮箱地址>`（严格管理员）
 
-将该邮箱密码重置为默认（兼容逻辑：默认密码为邮箱地址本身）。
+将该邮箱密码重置为默认密码（邮箱地址本身）。
 
 #### `PUT /api/mailbox/password`（邮箱用户）
 
@@ -325,8 +336,8 @@ curl -X POST \
 
 返回邮件详情：
 
-- `content`：纯文本（从 EML 解析或旧字段回退）
-- `html_content`：HTML（从 EML 解析或旧字段回退）
+- `content`：从 R2 EML 解析的纯文本；原件不可用时仅提供邮件预览
+- `html_content`：从 R2 EML 解析并经过安全清洗的 HTML
 - `verification_code`：验证码（若命中）
 - `download`：若存在 R2 EML 对象，将提供 `/api/email/:id/download` 路径
 
@@ -336,7 +347,7 @@ curl -X POST \
 
 #### `GET /api/emails/batch?ids=1,2,3`
 
-批量查询邮件详情（减少 N+1 请求），单次最多 50 封。
+批量查询邮件元数据（减少 N+1 请求），单次最多 50 封；邮件正文通过单封详情接口获取。
 
 #### `DELETE /api/email/:id`
 
@@ -373,6 +384,8 @@ curl -X POST \
 #### `POST /api/users`
 
 请求体：`{ "username": "xxx", "password": "可选", "mailboxLimit": 10 }`
+
+`mailboxLimit` 为0-999999的整数，0表示不能继续创建邮箱；不再回退为10。提供的非空自定义密码必须为6-128位字符串，首尾空格保留。`can_send` 接受布尔值或0/1，`status` 接受 Active/Inactive。
 
 #### `PATCH /api/users/:userId`
 
@@ -489,3 +502,9 @@ curl -X POST \
 - 配置：`SOFT_TTL_AUTO_HOURS`（小时，>0 才生效）
 
 > 备注：`POST /receive` 走的是 `getOrCreateMailboxId`，默认不会写 `expires_at`；因此更应通过 `RECEIVE_TOKEN` 做访问控制。
+
+### 输入校验补充
+
+除批量发信外，需要 JSON 请求体的写接口仅接受对象，不接受数组、`null` 或标量。`/api/send/batch` 保持对象数组请求体，并增加1-100项的数量校验；重置密码、置顶和取消发信接口保留无请求体调用。
+
+公开批量创建接口的 `count` 为1-20整数、`expiryDays` 为1-30整数；无效域名或前缀返回400。单个自定义前缀最多64位；批量添加6位随机后缀时原前缀最多58位。

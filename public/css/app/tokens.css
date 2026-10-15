@@ -17,12 +17,13 @@
     --ios-separator: #C6C6C8;
     --ios-separator-light: #E5E5EA;
     --label-primary: #111114;
-    --label-secondary: #3C3C4399;
-    --label-tertiary: #3C3C434D;
+    --label-secondary: #606066;
+    --label-tertiary: #6A6A70;
     --accent-blue: #007AFF;
     --accent-blue-active: #0062cc;
     --system-red: #FF3B30;
     --system-green: #34C759;
+    --text-status-active: #187A35;
     --system-yellow: #FFD60A;
 
     /* 语义表面 */
@@ -42,7 +43,7 @@
     --surface-tabbar-border: rgba(60, 60, 67, 0.18);
     --surface-status-active: #E1F9E8;
     --surface-status-inactive: #E5E5EA;
-    --text-status-inactive: #3C3C4399;
+    --text-status-inactive: var(--label-secondary);
     --select-caret-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%233C3C43' fill-opacity='0.6' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
 
     /* 边框/焦点 */
@@ -64,6 +65,16 @@
     --r-sm: 8px;
     --r-md: 12px;
 
+    /* Compact 4/8pt layout and data typography. */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
     /* 缓动函数 */
     --ease-out: cubic-bezier(0.25, 1, 0.5, 1);
     --ease-spring: cubic-bezier(0.19, 1, 0.22, 1);
@@ -83,12 +94,13 @@
     --ios-separator: #3A3A3C;
     --ios-separator-light: #2F2F32;
     --label-primary: #F5F5F7;
-    --label-secondary: #EBEBF599;
-    --label-tertiary: #EBEBF54D;
+    --label-secondary: #AEAEB2;
+    --label-tertiary: #98989E;
     --accent-blue: #0A84FF;
     --accent-blue-active: #409CFF;
     --system-red: #FF453A;
     --system-green: #32D74B;
+    --text-status-active: #72E38A;
 
     --surface-window: #0B0B0D;
     --surface-sidebar: rgba(22, 22, 24, 0.84);
@@ -124,19 +136,6 @@
     --overlay-medium: rgba(255, 255, 255, 0.15);
 }
 
-[data-theme='dark'] body,
-[data-theme='dark'] body.app-mode {
-    background-color: var(--ios-bg);
-}
-[data-theme='dark'] .brand-icon {
-    background: linear-gradient(135deg, #1C1C1E 0%, #2C2C2E 100%);
-    border-color: var(--stroke-soft);
-    box-shadow: none;
-}
 [data-theme='dark'] .ios-switch {
     background: #39393D;
-}
-[data-theme='dark'] .user-block.selected,
-[data-theme='dark'] .e-row.selected {
-    background-color: var(--selection-bg) !important;
 }

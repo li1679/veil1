@@ -11,10 +11,10 @@ export async function handleSession(context) {
   }
 
   const identity = createSessionIdentity(authPayload, env);
-  const { state, response } = await loadSessionState(env, identity);
+  const { state, response } = await loadSessionState(env, identity, context.db);
   if (response) return response;
 
-  return Response.json(createSessionPayload(identity, state));
+  return Response.json(createSessionPayload(identity, state), { headers: { 'Cache-Control': 'no-store' } });
 }
 
 function createSessionIdentity(authPayload, env) {
@@ -48,10 +48,10 @@ function createDefaultSessionState() {
   };
 }
 
-async function loadSessionState(env, identity) {
+async function loadSessionState(env, identity, database) {
   const state = createDefaultSessionState();
   try {
-    const DB = await getDatabaseWithValidation(env);
+    const DB = database || await getDatabaseWithValidation(env);
     if (identity.role === 'admin') {
       return { state: await loadAdminSessionState(DB, identity), response: null };
     }
@@ -61,8 +61,9 @@ async function loadSessionState(env, identity) {
     if (identity.role === 'mailbox') {
       return { state: { ...state, mailboxLimit: MAILBOX_ROLE_LIMIT, quotaUsed: MAILBOX_ROLE_LIMIT }, response: null };
     }
-  } catch (_) {
-    return { state, response: null };
+  } catch (error) {
+    console.error('Session state load failed:', error);
+    return { state, response: new Response('无法读取会话状态', { status: 500 }) };
   }
   return { state, response: null };
 }
@@ -87,7 +88,8 @@ async function loadUserSessionState(DB, identity) {
 
   const quota = await loadUserQuota(DB, identity.userId);
   const info = await DB.prepare('SELECT name, can_send, status FROM users WHERE id = ? LIMIT 1').bind(identity.userId).all();
-  const row = info?.results?.[0] || {};
+  const row = info?.results?.[0];
+  if (!row) return { state: createDefaultSessionState(), response: new Response('Unauthorized', { status: 401 }) };
   const status = String(row.status || 'Active');
   if (status === 'Inactive') {
     return { state: createDefaultSessionState(), response: new Response('账户已停用', { status: 403 }) };

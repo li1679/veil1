@@ -1,5 +1,5 @@
-﻿-- Cloudflare D1 数据库初始化脚本
--- 首次部署时执行：wrangler d1 execute DB --file=./d1-init.sql
+﻿-- Cloudflare D1 全新实例初始化脚本，不包含旧版本迁移
+-- 首次部署时执行：wrangler d1 execute veil_db --remote --file=./d1-init.sql
 
 -- 启用外键约束
 PRAGMA foreign_keys = ON;
@@ -111,3 +111,40 @@ CREATE INDEX IF NOT EXISTS idx_sent_emails_status_created ON sent_emails(status,
 CREATE INDEX IF NOT EXISTS idx_sent_emails_from_addr ON sent_emails(from_addr);
 CREATE INDEX IF NOT EXISTS idx_sent_emails_user_from ON sent_emails(user_id, from_addr, created_at DESC);
 
+
+-- Additive integrity constraints for nullable creator references and durable R2 cleanup.
+CREATE TABLE IF NOT EXISTS r2_delete_queue (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  object_key TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER IF NOT EXISTS messages_queue_r2_delete
+AFTER DELETE ON messages
+WHEN OLD.r2_object_key IS NOT NULL AND OLD.r2_object_key <> ''
+BEGIN
+  INSERT OR IGNORE INTO r2_delete_queue (object_key) VALUES (OLD.r2_object_key);
+END;
+
+CREATE TRIGGER IF NOT EXISTS mailboxes_validate_creator_insert
+BEFORE INSERT ON mailboxes
+WHEN NEW.created_by_user_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM users WHERE id = NEW.created_by_user_id)
+BEGIN
+  SELECT RAISE(ABORT, 'Invalid mailbox creator');
+END;
+
+CREATE TRIGGER IF NOT EXISTS mailboxes_validate_creator_update
+BEFORE UPDATE OF created_by_user_id ON mailboxes
+WHEN NEW.created_by_user_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM users WHERE id = NEW.created_by_user_id)
+BEGIN
+  SELECT RAISE(ABORT, 'Invalid mailbox creator');
+END;
+
+CREATE TRIGGER IF NOT EXISTS users_clear_references
+BEFORE DELETE ON users
+BEGIN
+  UPDATE mailboxes SET created_by_user_id = NULL WHERE created_by_user_id = OLD.id;
+  UPDATE sent_emails SET user_id = NULL WHERE user_id = OLD.id;
+END;
